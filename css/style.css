@@ -39,10 +39,6 @@ svg {
   text-anchor: middle;
   pointer-events: none;
 }
-/* Additional text classes for easier toggling */
-.main-text { }
-.sub-text { }
-.subsub-text { }
 
 /* Animated connector styling */
 .connector {

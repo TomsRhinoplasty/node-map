@@ -1,10 +1,11 @@
 // js/main.js
 import { mainNodes, subNodes, subSubNodes } from "./data.js";
-import { placeSubBranch } from "./layout.js";
-import { drawNodes, drawConnection, drawLegend } from "./drawing.js";
-import { bindTooltip, initZoom, zoomToFit, bindExpandCollapse } from "./interactions.js";
+import { updateLayout } from "./layout.js";
+import { createNodes, drawLegend } from "./nodes.js";
+import { animateNodePositions, animateConnectors, animateZoomReset } from "./animation.js";
+import { bindTooltip, initZoom, bindExpandCollapse } from "./interactions.js";
 
-// Configuration constants (radii, spacing, etc.)
+// Configuration constants
 const config = {
   mainRadius: 50,
   subRadius: 20,
@@ -25,19 +26,21 @@ const height = window.innerHeight;
 const svg = d3.select("#map").attr("width", width).attr("height", height);
 const g = svg.append("g");
 
-// Layout: place main nodes and sub-branches.
-mainNodes[0].x = config.mainStartX;
-let currentRight = placeSubBranch(mainNodes[0], subNodes, subSubNodes, config);
-for (let i = 1; i < mainNodes.length; i++) {
-  mainNodes[i].x = currentRight + config.mainSpacing;
-  const newRight = placeSubBranch(mainNodes[i], subNodes, subSubNodes, config);
-  currentRight = Math.max(currentRight, newRight, mainNodes[i].x);
-}
+// Detail level: 0 = only main nodes, 1 = main+sub, 2 = main+sub+subsub.
+let currentDetailLevel = 0;
+let prevDetailLevel = currentDetailLevel;  // to track previous state
 
-// Draw nodes.
-drawNodes(g, mainNodes, subNodes, subSubNodes, config);
+// Initially recalculate layout (with only main nodes)
+updateLayout(mainNodes, subNodes, subSubNodes, config, currentDetailLevel);
 
-// Function to get the radius for a given node.
+// Create the node groups in the SVG.
+createNodes(g, mainNodes, subNodes, subSubNodes, config);
+
+// Initially hide sub and sub-sub node groups.
+d3.selectAll("g.sub-node-group").style("display", "none");
+d3.selectAll("g.subsub-node-group").style("display", "none");
+
+// Utility function: return radius based on node type.
 function getRadius(node) {
   if (node.type === "main") return config.mainRadius;
   if (node.type === "sub") return config.subRadius;
@@ -45,82 +48,83 @@ function getRadius(node) {
   return config.subRadius;
 }
 
-// Draw connectors between main nodes (as an example; extend as needed for detail levels).
-for (let i = 0; i < mainNodes.length - 1; i++) {
-  drawConnection(g, mainNodes[i], mainNodes[i+1], getRadius);
-}
+// Draw initial connectors (for detailLevel 0)
+animateConnectors(g, mainNodes, subNodes, subSubNodes, getRadius, currentDetailLevel);
 
 // Draw legend.
 drawLegend(svg);
-
-// Set up tooltip.
-const tooltip = d3.select("#tooltip");
-bindTooltip(g, tooltip);
 
 // Set up zoom behavior.
 const zoomBehavior = d3.zoom().on("zoom", event => {
   g.attr("transform", event.transform);
 });
 initZoom(svg, g, zoomBehavior);
+animateZoomReset(svg, g, zoomBehavior);
 
-// js/main.js (add near the bottom, after setting up zoomBehavior)
-d3.select("#resetZoom").on("click", () => {
-  zoomToFit(svg, g, zoomBehavior);
-});
+// Bind tooltip.
+const tooltip = d3.select("#tooltip");
+bindTooltip(g, tooltip);
 
-
-// Detail level for expand/collapse (0: only main, 1: main+sub, 2: main+sub+subsub).
-let currentDetailLevel = 0;
+/**
+ * Updates the diagram when expanding or collapsing nodes.
+ * Recalculates layout, sets initial positions for newly revealed nodes to come from their parent's center,
+ * animates node group transitions, and redraws connectors.
+ */
 function updateDiagram(action) {
+  // Store the current detail level as previous.
+  prevDetailLevel = currentDetailLevel;
+  
+  // Update detail level based on the action.
   if (action === "expand") {
     currentDetailLevel = Math.min(currentDetailLevel + 1, 2);
   } else if (action === "collapse") {
     currentDetailLevel = Math.max(currentDetailLevel - 1, 0);
   }
-  // Update node visibility.
-  d3.selectAll("circle.main-node, text.main-text").style("display", "block");
-  d3.selectAll("circle.sub-node, text.sub-text").style("display", currentDetailLevel >= 1 ? "block" : "none");
-  d3.selectAll("circle.sub-sub-node, text.subsub-text").style("display", currentDetailLevel >= 2 ? "block" : "none");
-  // Remove existing connectors.
-  g.selectAll("line.connector").remove();
-  // Redraw connectors based on detail level.
-  for (let i = 0; i < mainNodes.length - 1; i++) {
-    const source = mainNodes[i];
-    const target = mainNodes[i+1];
-    if (currentDetailLevel === 0) {
-      drawConnection(g, source, target, getRadius);
-    } else if (currentDetailLevel === 1) {
-      const subs = subNodes.filter(n => n.id.startsWith(source.id + "s"));
-      if (subs.length > 0) {
-        subs.forEach(sub => {
-          drawConnection(g, source, sub, getRadius);
-          drawConnection(g, sub, target, getRadius);
-        });
-      } else {
-        drawConnection(g, source, target, getRadius);
-      }
-    } else if (currentDetailLevel === 2) {
-      const subs = subNodes.filter(n => n.id.startsWith(source.id + "s"));
-      if (subs.length > 0) {
-        subs.forEach(sub => {
-          const subSubs = subSubNodes.filter(n => n.id.startsWith(sub.id + "ss"));
-          drawConnection(g, source, sub, getRadius);
-          if (subSubs.length > 0) {
-            subSubs.forEach(subsub => {
-              drawConnection(g, sub, subsub, getRadius);
-              drawConnection(g, subsub, target, getRadius);
-            });
-          } else {
-            drawConnection(g, sub, target, getRadius);
+  
+  // If expanding (i.e. new detail level is higher than previous), set initial positions for new groups.
+  if (currentDetailLevel > prevDetailLevel) {
+    // When expanding from 0 to 1, set sub node groups' initial transform to their parent's (main node) center.
+    if (currentDetailLevel === 1 && prevDetailLevel === 0) {
+      d3.selectAll("g.sub-node-group")
+        .each(function(d) {
+          // Parent ID is first two characters (e.g., "m2" from "m2s1")
+          const parentId = d.id.substring(0, 2);
+          const parent = mainNodes.find(n => n.id === parentId);
+          if (parent) {
+            d3.select(this).attr("transform", `translate(${parent.x}, ${parent.y})`);
           }
         });
-      } else {
-        drawConnection(g, source, target, getRadius);
-      }
+    }
+    // When expanding from 1 to 2, set sub-sub node groups' initial transform to their parent's (sub node) center.
+    else if (currentDetailLevel === 2 && prevDetailLevel === 1) {
+      d3.selectAll("g.subsub-node-group")
+        .each(function(d) {
+          // Parent ID is the part before "ss" (e.g., "m2s1" from "m2s1ss1")
+          const parentId = d.id.split("ss")[0];
+          const parent = subNodes.find(n => n.id === parentId);
+          if (parent) {
+            d3.select(this).attr("transform", `translate(${parent.x}, ${parent.y})`);
+          }
+        });
     }
   }
+  
+  // Set visibility based on current detail level.
+  d3.selectAll("g.main-node-group").style("display", "block");
+  d3.selectAll("g.sub-node-group").style("display", currentDetailLevel >= 1 ? "block" : "none");
+  d3.selectAll("g.subsub-node-group").style("display", currentDetailLevel >= 2 ? "block" : "none");
+  
+  // Recalculate layout based on the new detail level.
+  updateLayout(mainNodes, subNodes, subSubNodes, config, currentDetailLevel);
+  
+  // Animate node groups to new positions.
+  animateNodePositions(g);
+  
+  // Animate connectors.
+  animateConnectors(g, mainNodes, subNodes, subSubNodes, getRadius, currentDetailLevel);
 }
 
+// Bind expand/collapse buttons.
 const expandButton = d3.select("#expandButton");
 const collapseButton = d3.select("#collapseButton");
 bindExpandCollapse(expandButton, collapseButton, updateDiagram);
