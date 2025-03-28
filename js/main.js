@@ -63,8 +63,11 @@ const zoomBehavior = d3.zoom().on("zoom", event => {
 });
 initZoom(svg, g, zoomBehavior);
 
-// Zoom to fit the diagram on load.
-zoomToFit(svg, g);
+// js/main.js (add near the bottom, after setting up zoomBehavior)
+d3.select("#resetZoom").on("click", () => {
+  zoomToFit(svg, g, zoomBehavior);
+});
+
 
 // Detail level for expand/collapse (0: only main, 1: main+sub, 2: main+sub+subsub).
 let currentDetailLevel = 0;
