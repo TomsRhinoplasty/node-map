@@ -1,10 +1,11 @@
 // js/nodes.js
 export function createNodes(svgGroup, mainNodes, subNodes, subSubNodes, config) {
-  // Create groups for main nodes
+  // Create groups for main nodes with an id attribute.
   const mainGroups = svgGroup.selectAll("g.main-node-group")
     .data(mainNodes, d => d.id)
     .enter()
     .append("g")
+    .attr("id", d => "main-node-group-" + d.id)
     .attr("class", d => `main-node-group ${d.role}`)
     .attr("transform", d => `translate(${d.x}, ${d.y})`);
 
@@ -18,11 +19,12 @@ export function createNodes(svgGroup, mainNodes, subNodes, subSubNodes, config) 
     .attr("text-anchor", "middle")
     .text(d => d.title);
 
-  // Create groups for sub nodes
+  // Create groups for sub nodes with an id attribute.
   const subGroups = svgGroup.selectAll("g.sub-node-group")
     .data(subNodes, d => d.id)
     .enter()
     .append("g")
+    .attr("id", d => "sub-node-group-" + d.id)
     .attr("class", d => `sub-node-group ${d.role}`)
     .attr("transform", d => `translate(${d.x}, ${d.y})`);
 
@@ -36,11 +38,12 @@ export function createNodes(svgGroup, mainNodes, subNodes, subSubNodes, config) 
     .attr("text-anchor", "middle")
     .text(d => d.title);
 
-  // Create groups for sub-sub nodes
+  // Create groups for sub‑sub nodes with an id attribute.
   const subSubGroups = svgGroup.selectAll("g.subsub-node-group")
     .data(subSubNodes, d => d.id)
     .enter()
     .append("g")
+    .attr("id", d => "subsub-node-group-" + d.id)
     .attr("class", d => `subsub-node-group ${d.role}`)
     .attr("transform", d => `translate(${d.x}, ${d.y})`);
 

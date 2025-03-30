@@ -1,54 +1,77 @@
 // js/animation.js
 
 /**
- * Compute the final endpoints for a connector based on source and target nodes.
+ * Helper function to get the current position of a node by reading its group’s transform.
+ */
+function getCurrentPos(node) {
+  let group;
+  if (node.type === "main") {
+    group = d3.select("#main-node-group-" + node.id);
+  } else if (node.type === "sub") {
+    group = d3.select("#sub-node-group-" + node.id);
+  } else if (node.type === "subsub") {
+    group = d3.select("#subsub-node-group-" + node.id);
+  }
+  if (group.empty()){
+      return { x: node.x, y: node.y };
+  }
+  const transform = group.attr("transform"); // Expected format: translate(x,y)
+  const match = /translate\(\s*([^,]+),\s*([^)]+)\)/.exec(transform);
+  if (match) {
+      return { x: parseFloat(match[1]), y: parseFloat(match[2]) };
+  }
+  return { x: node.x, y: node.y };
+}
+
+/**
+ * Compute the final endpoints for a connector based on the current positions of source and target.
  */
 function computeEndpoints(d, getRadius) {
-  const dx = d.target.x - d.source.x;
-  const dy = d.target.y - d.source.y;
+  const sourcePos = getCurrentPos(d.source);
+  const targetPos = getCurrentPos(d.target);
+  const dx = targetPos.x - sourcePos.x;
+  const dy = targetPos.y - sourcePos.y;
   const angle = Math.atan2(dy, dx);
   const sourceRadius = getRadius(d.source);
   const targetRadius = getRadius(d.target);
   return {
-    startX: d.source.x + Math.cos(angle) * sourceRadius,
-    startY: d.source.y + Math.sin(angle) * sourceRadius,
-    endX: d.target.x - Math.cos(angle) * targetRadius,
-    endY: d.target.y - Math.sin(angle) * targetRadius
+    startX: sourcePos.x + Math.cos(angle) * sourceRadius,
+    startY: sourcePos.y + Math.sin(angle) * sourceRadius,
+    endX: targetPos.x - Math.cos(angle) * targetRadius,
+    endY: targetPos.y - Math.sin(angle) * targetRadius
   };
 }
 
 /**
- * Compute the initial endpoints for a connector so that it appears to "grow" out of the parent.
- * 
- * For connectors that branch off from the base main-to-main connection:
- * - If d.source is a sub node and d.target is a main node, the initial endpoints are set to the parent main node’s center.
- * - Similarly for a sub-sub node to main connection.
+ * Compute the initial endpoints for a connector so that it appears to "grow" out of the parent's center.
  */
 function computeInitialEndpoints(d, getRadius, mainNodes) {
   // Case 1: main → sub
   if (d.source.type === "main" && d.target.type === "sub") {
-    return { startX: d.source.x, startY: d.source.y, endX: d.source.x, endY: d.source.y };
+    const pos = getCurrentPos(d.source);
+    return { startX: pos.x, startY: pos.y, endX: pos.x, endY: pos.y };
   }
   // Case 2: sub → main
   if (d.source.type === "sub" && d.target.type === "main") {
-    // Assume the parent's id is the first two characters of the sub node's id.
     const parentId = d.source.id.substring(0, 2);
     const parent = mainNodes.find(n => n.id === parentId);
     if (parent) {
-      return { startX: parent.x, startY: parent.y, endX: parent.x, endY: parent.y };
+      const pos = getCurrentPos(parent);
+      return { startX: pos.x, startY: pos.y, endX: pos.x, endY: pos.y };
     }
   }
   // Case 3: sub → subsub
   if (d.source.type === "sub" && d.target.type === "subsub") {
-    return { startX: d.source.x, startY: d.source.y, endX: d.source.x, endY: d.source.y };
+    const pos = getCurrentPos(d.source);
+    return { startX: pos.x, startY: pos.y, endX: pos.x, endY: pos.y };
   }
   // Case 4: subsub → main
   if (d.source.type === "subsub" && d.target.type === "main") {
-    // For subsub nodes, assume parent's main id is the first two characters of the subsub id.
     const parentMainId = d.source.id.substring(0, 2);
     const parentMain = mainNodes.find(n => n.id === parentMainId);
     if (parentMain) {
-      return { startX: parentMain.x, startY: parentMain.y, endX: parentMain.x, endY: parentMain.y };
+      const pos = getCurrentPos(parentMain);
+      return { startX: pos.x, startY: pos.y, endX: pos.x, endY: pos.y };
     }
   }
   // Default: return final endpoints immediately.
@@ -114,7 +137,7 @@ export function animateNodePositions(svgGroup, duration = 750) {
 
 /**
  * Animate connectors so that they transition from initial positions (growing out from the parent's center)
- * to their computed final positions.
+ * to their computed final positions. The tween function recomputes endpoints on each tick.
  */
 export function animateConnectors(svgGroup, mainNodes, subNodes, subSubNodes, getRadius, detailLevel, duration = 750) {
   const connectorsData = computeConnectors(mainNodes, subNodes, subSubNodes, detailLevel);
@@ -138,27 +161,17 @@ export function animateConnectors(svgGroup, mainNodes, subNodes, subSubNodes, ge
         .attr("y2", init.endY);
     });
   
-  // Merge and transition all lines to their final positions.
+  // Merge and transition all lines to their final positions with a tween that recalculates endpoints.
   linesEnter.merge(lines).transition().duration(duration)
-    .attrTween("x1", function(d) {
-      const final = computeEndpoints(d, getRadius).startX;
-      const current = +this.getAttribute("x1");
-      return d3.interpolateNumber(current, final);
-    })
-    .attrTween("y1", function(d) {
-      const final = computeEndpoints(d, getRadius).startY;
-      const current = +this.getAttribute("y1");
-      return d3.interpolateNumber(current, final);
-    })
-    .attrTween("x2", function(d) {
-      const final = computeEndpoints(d, getRadius).endX;
-      const current = +this.getAttribute("x2");
-      return d3.interpolateNumber(current, final);
-    })
-    .attrTween("y2", function(d) {
-      const final = computeEndpoints(d, getRadius).endY;
-      const current = +this.getAttribute("y2");
-      return d3.interpolateNumber(current, final);
+    .tween("attr", function(d) {
+      return function(t) {
+        const endpoints = computeEndpoints(d, getRadius);
+        d3.select(this)
+          .attr("x1", endpoints.startX)
+          .attr("y1", endpoints.startY)
+          .attr("x2", endpoints.endX)
+          .attr("y2", endpoints.endY);
+      };
     });
 }
 

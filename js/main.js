@@ -36,7 +36,7 @@ updateLayout(mainNodes, subNodes, subSubNodes, config, currentDetailLevel);
 // Create the node groups in the SVG.
 createNodes(g, mainNodes, subNodes, subSubNodes, config);
 
-// Initially hide sub and sub-sub node groups.
+// Initially hide sub and sub‑sub node groups.
 d3.selectAll("g.sub-node-group").style("display", "none");
 d3.selectAll("g.subsub-node-group").style("display", "none");
 
@@ -87,7 +87,7 @@ function updateDiagram(action) {
     if (currentDetailLevel === 1 && prevDetailLevel === 0) {
       d3.selectAll("g.sub-node-group")
         .each(function(d) {
-          // Parent ID is first two characters (e.g., "m2" from "m2s1")
+          // Parent ID is the first two characters (e.g., "m2" from "m2s1")
           const parentId = d.id.substring(0, 2);
           const parent = mainNodes.find(n => n.id === parentId);
           if (parent) {
@@ -95,7 +95,7 @@ function updateDiagram(action) {
           }
         });
     }
-    // When expanding from 1 to 2, set sub-sub node groups' initial transform to their parent's (sub node) center.
+    // When expanding from 1 to 2, set sub‑sub node groups' initial transform to their parent's (sub node) center.
     else if (currentDetailLevel === 2 && prevDetailLevel === 1) {
       d3.selectAll("g.subsub-node-group")
         .each(function(d) {
@@ -109,10 +109,27 @@ function updateDiagram(action) {
     }
   }
   
-  // Set visibility based on current detail level.
+  // Always display main and sub nodes as needed.
   d3.selectAll("g.main-node-group").style("display", "block");
   d3.selectAll("g.sub-node-group").style("display", currentDetailLevel >= 1 ? "block" : "none");
-  d3.selectAll("g.subsub-node-group").style("display", currentDetailLevel >= 2 ? "block" : "none");
+  
+  // For sub‑sub nodes: if collapsing from detail level 2 to 1, animate them back to their parent's center.
+  if (action === "collapse" && prevDetailLevel === 2 && currentDetailLevel === 1) {
+    // Keep sub‑sub nodes visible during transition.
+    d3.selectAll("g.subsub-node-group")
+      .style("display", "block")
+      .transition().duration(750)
+      .attr("transform", function(d) {
+         const parentId = d.id.split("ss")[0];
+         const parentGroup = d3.select("#sub-node-group-" + parentId);
+         return parentGroup.empty() ? `translate(${d.x},${d.y})` : parentGroup.attr("transform");
+      })
+      .on("end", function() {
+         d3.select(this).style("display", "none");
+      });
+  } else {
+    d3.selectAll("g.subsub-node-group").style("display", currentDetailLevel >= 2 ? "block" : "none");
+  }
   
   // Recalculate layout based on the new detail level.
   updateLayout(mainNodes, subNodes, subSubNodes, config, currentDetailLevel);
