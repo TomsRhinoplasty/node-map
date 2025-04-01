@@ -1,6 +1,5 @@
-// js/nodes.js
 export function createNodes(svgGroup, mainNodes, subNodes, subSubNodes, config) {
-  // Create groups for main nodes with an id attribute.
+  // Create groups for main nodes.
   const mainGroups = svgGroup.selectAll("g.main-node-group")
     .data(mainNodes, d => d.id)
     .enter()
@@ -19,7 +18,7 @@ export function createNodes(svgGroup, mainNodes, subNodes, subSubNodes, config) 
     .attr("text-anchor", "middle")
     .text(d => d.title);
 
-  // Create groups for sub nodes with an id attribute.
+  // Create groups for sub nodes.
   const subGroups = svgGroup.selectAll("g.sub-node-group")
     .data(subNodes, d => d.id)
     .enter()
@@ -38,7 +37,7 @@ export function createNodes(svgGroup, mainNodes, subNodes, subSubNodes, config) 
     .attr("text-anchor", "middle")
     .text(d => d.title);
 
-  // Create groups for sub‑sub nodes with an id attribute.
+  // Create groups for sub‑sub nodes.
   const subSubGroups = svgGroup.selectAll("g.subsub-node-group")
     .data(subSubNodes, d => d.id)
     .enter()

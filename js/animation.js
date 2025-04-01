@@ -1,9 +1,7 @@
-// js/animation.js
-
 /**
- * Helper function to get the current position of a node.
- * Now, if the node has a currentX/currentY (set by our animation loop),
- * we use those; otherwise we fall back to the node’s target x and y.
+ * Returns the current position of a node.
+ * If the node has currentX/currentY (set by our animation loop),
+ * those are used; otherwise, the target x and y are returned.
  */
 export function getCurrentPos(node) {
   if (node.currentX !== undefined && node.currentY !== undefined) {
@@ -13,7 +11,7 @@ export function getCurrentPos(node) {
 }
 
 /**
- * Compute the final endpoints for a connector based on the current positions of source and target.
+ * Computes the endpoints for a connector based on the current positions of source and target.
  */
 export function computeEndpoints(d, getRadius) {
   const sourcePos = getCurrentPos(d.source);
@@ -32,8 +30,7 @@ export function computeEndpoints(d, getRadius) {
 }
 
 /**
- * Compute an array of connector objects based on the current detail level.
- * Each connector object has a source and target.
+ * Computes an array of connector objects based on the current detail level.
  */
 export function computeConnectors(mainNodes, subNodes, subSubNodes, detailLevel) {
   let connectors = [];
@@ -43,7 +40,7 @@ export function computeConnectors(mainNodes, subNodes, subSubNodes, detailLevel)
     if (detailLevel === 0) {
       connectors.push({ source, target });
     } else if (detailLevel === 1) {
-      const subs = subNodes.filter(n => n.id.startsWith(source.id + "s"));
+      const subs = subNodes.filter(n => n.parent === source.id);
       if (subs.length > 0) {
         subs.forEach(sub => {
           connectors.push({ source, target: sub });
@@ -53,10 +50,10 @@ export function computeConnectors(mainNodes, subNodes, subSubNodes, detailLevel)
         connectors.push({ source, target });
       }
     } else if (detailLevel === 2) {
-      const subs = subNodes.filter(n => n.id.startsWith(source.id + "s"));
+      const subs = subNodes.filter(n => n.parent === source.id);
       if (subs.length > 0) {
         subs.forEach(sub => {
-          const subSubs = subSubNodes.filter(n => n.id.startsWith(sub.id + "ss"));
+          const subSubs = subSubNodes.filter(n => n.parent === sub.id);
           connectors.push({ source, target: sub });
           if (subSubs.length > 0) {
             subSubs.forEach(subsub => {
