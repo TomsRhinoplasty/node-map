@@ -1,24 +1,13 @@
 // js/animation.js
 
 /**
- * Helper function to get the current position of a node by reading its group’s transform.
+ * Helper function to get the current position of a node.
+ * Now, if the node has a currentX/currentY (set by our animation loop),
+ * we use those; otherwise we fall back to the node’s target x and y.
  */
-function getCurrentPos(node) {
-  let group;
-  if (node.type === "main") {
-    group = d3.select("#main-node-group-" + node.id);
-  } else if (node.type === "sub") {
-    group = d3.select("#sub-node-group-" + node.id);
-  } else if (node.type === "subsub") {
-    group = d3.select("#subsub-node-group-" + node.id);
-  }
-  if (group.empty()){
-      return { x: node.x, y: node.y };
-  }
-  const transform = group.attr("transform"); // Expected format: translate(x,y)
-  const match = /translate\(\s*([^,]+),\s*([^)]+)\)/.exec(transform);
-  if (match) {
-      return { x: parseFloat(match[1]), y: parseFloat(match[2]) };
+export function getCurrentPos(node) {
+  if (node.currentX !== undefined && node.currentY !== undefined) {
+    return { x: node.currentX, y: node.currentY };
   }
   return { x: node.x, y: node.y };
 }
@@ -26,7 +15,7 @@ function getCurrentPos(node) {
 /**
  * Compute the final endpoints for a connector based on the current positions of source and target.
  */
-function computeEndpoints(d, getRadius) {
+export function computeEndpoints(d, getRadius) {
   const sourcePos = getCurrentPos(d.source);
   const targetPos = getCurrentPos(d.target);
   const dx = targetPos.x - sourcePos.x;
@@ -43,46 +32,10 @@ function computeEndpoints(d, getRadius) {
 }
 
 /**
- * Compute the initial endpoints for a connector so that it appears to "grow" out of the parent's center.
- */
-function computeInitialEndpoints(d, getRadius, mainNodes) {
-  // Case 1: main → sub
-  if (d.source.type === "main" && d.target.type === "sub") {
-    const pos = getCurrentPos(d.source);
-    return { startX: pos.x, startY: pos.y, endX: pos.x, endY: pos.y };
-  }
-  // Case 2: sub → main
-  if (d.source.type === "sub" && d.target.type === "main") {
-    const parentId = d.source.id.substring(0, 2);
-    const parent = mainNodes.find(n => n.id === parentId);
-    if (parent) {
-      const pos = getCurrentPos(parent);
-      return { startX: pos.x, startY: pos.y, endX: pos.x, endY: pos.y };
-    }
-  }
-  // Case 3: sub → subsub
-  if (d.source.type === "sub" && d.target.type === "subsub") {
-    const pos = getCurrentPos(d.source);
-    return { startX: pos.x, startY: pos.y, endX: pos.x, endY: pos.y };
-  }
-  // Case 4: subsub → main
-  if (d.source.type === "subsub" && d.target.type === "main") {
-    const parentMainId = d.source.id.substring(0, 2);
-    const parentMain = mainNodes.find(n => n.id === parentMainId);
-    if (parentMain) {
-      const pos = getCurrentPos(parentMain);
-      return { startX: pos.x, startY: pos.y, endX: pos.x, endY: pos.y };
-    }
-  }
-  // Default: return final endpoints immediately.
-  return computeEndpoints(d, getRadius);
-}
-
-/**
  * Compute an array of connector objects based on the current detail level.
  * Each connector object has a source and target.
  */
-function computeConnectors(mainNodes, subNodes, subSubNodes, detailLevel) {
+export function computeConnectors(mainNodes, subNodes, subSubNodes, detailLevel) {
   let connectors = [];
   for (let i = 0; i < mainNodes.length - 1; i++) {
     const source = mainNodes[i];
@@ -121,58 +74,6 @@ function computeConnectors(mainNodes, subNodes, subSubNodes, detailLevel) {
     }
   }
   return connectors;
-}
-
-/**
- * Animate repositioning of node groups.
- */
-export function animateNodePositions(svgGroup, duration = 750) {
-  svgGroup.selectAll("g.main-node-group").transition().duration(duration)
-    .attr("transform", d => `translate(${d.x}, ${d.y})`);
-  svgGroup.selectAll("g.sub-node-group").transition().duration(duration)
-    .attr("transform", d => `translate(${d.x}, ${d.y})`);
-  svgGroup.selectAll("g.subsub-node-group").transition().duration(duration)
-    .attr("transform", d => `translate(${d.x}, ${d.y})`);
-}
-
-/**
- * Animate connectors so that they transition from initial positions (growing out from the parent's center)
- * to their computed final positions. The tween function recomputes endpoints on each tick.
- */
-export function animateConnectors(svgGroup, mainNodes, subNodes, subSubNodes, getRadius, detailLevel, duration = 750) {
-  const connectorsData = computeConnectors(mainNodes, subNodes, subSubNodes, detailLevel);
-  
-  // Data join: bind connector data to line elements.
-  const lines = svgGroup.selectAll("line.connector")
-    .data(connectorsData, d => d.source.id + "-" + d.target.id);
-  
-  // Remove old connectors.
-  lines.exit().remove();
-  
-  // For new connectors, set initial endpoints.
-  const linesEnter = lines.enter().append("line")
-    .attr("class", "connector")
-    .each(function(d) {
-      const init = computeInitialEndpoints(d, getRadius, mainNodes);
-      d3.select(this)
-        .attr("x1", init.startX)
-        .attr("y1", init.startY)
-        .attr("x2", init.endX)
-        .attr("y2", init.endY);
-    });
-  
-  // Merge and transition all lines to their final positions with a tween that recalculates endpoints.
-  linesEnter.merge(lines).transition().duration(duration)
-    .tween("attr", function(d) {
-      return function(t) {
-        const endpoints = computeEndpoints(d, getRadius);
-        d3.select(this)
-          .attr("x1", endpoints.startX)
-          .attr("y1", endpoints.startY)
-          .attr("x2", endpoints.endX)
-          .attr("y2", endpoints.endY);
-      };
-    });
 }
 
 /**

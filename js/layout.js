@@ -53,13 +53,18 @@ export function placeSubBranch(mainNode, subNodes, subSubNodes, config, detailLe
  * Recalculates the positions of all main nodes (and their sub branches)
  * based on the current detailLevel.
  *
- * IMPORTANT: We reset the positions of the sub nodes and sub-sub nodes first
- * so that the layout calculation doesn’t use stale values from a previous (deeper) detail level.
+ * IMPORTANT: We reset the positions of the sub nodes.
+ * For sub‑sub nodes, we only reset them if the detail level is 2.
+ * (If the detail level is lower, we leave their positions alone, so that a collapse
+ * animation that set them to their parent’s center isn’t immediately overwritten.)
  */
 export function updateLayout(mainNodes, subNodes, subSubNodes, config, detailLevel) {
-  // Reset positions for sub and sub-sub nodes.
+  // Reset positions for sub nodes.
   subNodes.forEach(n => { n.x = 0; n.y = 0; });
-  subSubNodes.forEach(n => { n.x = 0; n.y = 0; });
+  // Only reset sub-sub nodes if detailLevel is 2 (expanded).
+  if (detailLevel >= 2) {
+    subSubNodes.forEach(n => { n.x = 0; n.y = 0; });
+  }
 
   mainNodes[0].x = config.mainStartX;
   let currentRight = placeSubBranch(mainNodes[0], subNodes, subSubNodes, config, detailLevel);
