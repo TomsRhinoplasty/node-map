@@ -28,22 +28,23 @@ function fullRadius(d) {
 }
 
 // Flatten all nodes into a single array for data binding/animation,
-// and assign each node its depth.
+// assign each node its depth and store a direct parent pointer.
 let allNodes = [];
-function gatherAllNodes(node, depth = 0) {
+function gatherAllNodes(node, depth = 0, parent = null) {
+  node.depth = depth;
+  node.parent = parent;
   allNodes.push(node);
-  node.depth = depth; // store depth
   node.currentX = 0;
   node.currentY = 0;
   // Clear animation flags
   node.expanding = false;
   node.collapsing = false;
   if (node.children) {
-    node.children.forEach(child => gatherAllNodes(child, depth + 1));
+    node.children.forEach(child => gatherAllNodes(child, depth + 1, node));
   }
 }
 mainNodes.forEach(m => {
-  gatherAllNodes(m, 0); // each main node has depth 0
+  gatherAllNodes(m, 0, null);
 });
 // Compute the maximum depth from the data
 const maxDepth = Math.max(...allNodes.map(d => d.depth));
@@ -132,7 +133,7 @@ function updateDiagram(action) {
     // For nodes in the new layer, start at their parent's center and mark as expanding.
     allNodes.forEach(n => {
       if (n.depth === currentDetailLevel) {
-        const parent = findParentInChain(n, currentDetailLevel - 1);
+        const parent = n.parent; // use direct parent pointer
         if (parent) {
           n.currentX = parent.currentX;
           n.currentY = parent.currentY;
@@ -147,7 +148,7 @@ function updateDiagram(action) {
     allNodes.forEach(n => {
       if (n.depth === prevDetailLevel) {
         n.collapsing = true;
-        const parent = findParentInChain(n, prevDetailLevel - 1);
+        const parent = n.parent; // use direct parent pointer
         if (parent) {
           // Save fully expanded position for computing collapse progress.
           n.expandedX = n.x;
@@ -163,23 +164,12 @@ function updateDiagram(action) {
   refreshDiagram();
 }
 
-// Helper: find a visible ancestor at a given depth.
+// Helper: find a visible ancestor at a given depth using the parent pointer.
 function findParentInChain(node, depthWanted) {
-  let current = node;
-  while (current && current.depth !== depthWanted) {
-    current = getParent(current);
+  while (node && node.depth !== depthWanted) {
+    node = node.parent;
   }
-  return current;
-}
-
-// Helper: find a node's parent by scanning allNodes.
-function getParent(child) {
-  for (let n of allNodes) {
-    if (n.children && n.children.includes(child)) {
-      return n;
-    }
-  }
-  return null;
+  return node;
 }
 
 // Helper: get the stored "expanded" (full target) position for a node.
@@ -223,7 +213,7 @@ function animate() {
   nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
 
   // Update circle sizes:
-  // If a node is in a visible layer (d.depth <= currentDetailLevel) or is animating (expanding or collapsing), show it at full size.
+  // If a node is in a visible layer (d.depth <= currentDetailLevel) or is animating, show it at full size.
   // Otherwise, hide it.
   nodeSel.select("circle").attr("r", d => {
     if (d.depth <= currentDetailLevel || d.expanding || d.collapsing) {
@@ -233,16 +223,12 @@ function animate() {
     }
   });
 
-  // Update text opacity:
-  // For nodes at depth 0 or below currentDetailLevel, full opacity.
-  // For nodes deeper than currentDetailLevel (and not animating), 0.
-  // For nodes exactly at currentDetailLevel (animating), opacity is 0 if factor ≤ 0.5,
-  // then increases linearly from 0 to 1 as factor goes from 0.5 to 1.
+  // Update text opacity based on distance from parent.
   nodeSel.select("text").style("opacity", d => {
     if (d.depth === 0) return 1;
     if (d.depth < currentDetailLevel) return 1;
     if (d.depth > currentDetailLevel && !d.expanding && !d.collapsing) return 0;
-    const parent = d.expanding || d.collapsing ? findParentInChain(d, d.depth - 1)
+    const parent = (d.expanding || d.collapsing) ? findParentInChain(d, d.depth - 1)
                                                  : findParentInChain(d, currentDetailLevel - 1);
     if (!parent) return 1;
     const dx = d.currentX - parent.x;
@@ -276,12 +262,21 @@ bindExpandCollapse(
   updateDiagram
 );
 
-// Handle window resize.
-window.addEventListener("resize", () => {
+// Debounce helper to improve resize performance.
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
+// Handle window resize with debounce.
+window.addEventListener("resize", debounce(() => {
   const w = window.innerWidth;
   const h = window.innerHeight;
   svg.attr("width", w).attr("height", h);
   config.centerY = h / 2;
   refreshDiagram();
   animateZoomReset(svg, g, zoomBehavior, 500);
-});
+}, 200));
