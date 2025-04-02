@@ -95,7 +95,6 @@ const zoomBehavior = d3.zoom().on("zoom", event => {
   g.attr("transform", event.transform);
 });
 initZoom(svg, g, zoomBehavior);
-animateZoomReset(svg, g, zoomBehavior);
 
 // Tooltip
 const tooltip = d3.select("#tooltip");
@@ -193,6 +192,17 @@ function getFullPosition(d) {
 
 // Initial layout
 refreshDiagram();
+
+// *** FIX: Set initial animated positions equal to layout positions ***
+// Without this, currentX/currentY remain at 0 so the computed bounding box is incorrect.
+allNodes.forEach(n => {
+  n.currentX = n.x;
+  n.currentY = n.y;
+});
+nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
+
+// Center the map after the layout is set.
+animateZoomReset(svg, g, zoomBehavior);
 
 // Animation loop: smoothly update positions and text opacity; node circles now always render full size.
 let lastTime = Date.now();
