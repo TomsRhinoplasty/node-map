@@ -17,7 +17,7 @@ svg {
 }
 
 /* Node Styles */
-.main-node, .sub-node, .sub-sub-node {
+.node circle {
   stroke: #fff;
   stroke-width: 2px;
 }
@@ -32,7 +32,7 @@ svg {
 .hybrid {
   fill: #2196F3; /* blue */
 }
-.node-text {
+.node text {
   font-family: sans-serif;
   font-size: 14px;
   fill: #fff;
@@ -41,7 +41,7 @@ svg {
 }
 
 /* Animated connector styling */
-.connector {
+.link {
   stroke: rgba(255, 255, 255, 0.3);
   stroke-width: 2px;
   fill: none;

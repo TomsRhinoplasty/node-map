@@ -1,69 +1,94 @@
-/**
- * Returns sub nodes for a given main node based on explicit parent property.
- */
-export function getSubsForMain(mId, subNodes) {
-  return subNodes.filter(n => n.parent === mId);
-}
+// js/layout.js
 
 /**
- * Returns sub‑sub nodes for a given sub node based on explicit parent property.
+ * Recursively positions each main node and its descendants.
+ * mainNodes[i] is placed to the right of the previous main node's rightmost X.
+ *
+ * detailLevel: how many levels of children to show (0 = only main, 1 = main+sub, etc.).
  */
-export function getSubSubsForSub(sId, subSubNodes) {
-  return subSubNodes.filter(n => n.parent === sId);
-}
+export function updateLayout(mainNodes, detailLevel, config) {
+  // Reset positions for all nodes
+  // (We do this so that a collapsed node doesn't remain at some old position.)
+  mainNodes.forEach(m => resetPositions(m));
 
-/**
- * Positions the branch stemming from a main node.
- * Sub nodes (if detailLevel >= 1) and sub‑sub nodes (if detailLevel === 2) are positioned.
- * Returns the rightmost x position in the branch.
- */
-export function placeSubBranch(mainNode, subNodes, subSubNodes, config, detailLevel) {
-  const subs = detailLevel >= 1 ? getSubsForMain(mainNode.id, subNodes) : [];
-  if (!subs.length) return mainNode.x;
-
-  const n = subs.length;
-  subs.forEach((sub, i) => {
-    sub.x = mainNode.x + config.subOffsetX;
-    sub.y = mainNode.y + (i - (n - 1) / 2) * config.subSpacingY;
-    if (detailLevel >= 2) {
-      const subSubs = getSubSubsForSub(sub.id, subSubNodes);
-      if (subSubs.length) {
-        const countSS = subSubs.length;
-        subSubs.forEach((ss, idx) => {
-          ss.x = sub.x + config.subSubOffsetX;
-          ss.y = sub.y + (idx - (countSS - 1) / 2) * config.subSubSpacingY;
-        });
-      }
-    }
-  });
-
-  let rightMost = mainNode.x + config.subOffsetX;
-  subs.forEach(sub => {
-    const subSubs = getSubSubsForSub(sub.id, subSubNodes);
-    if (subSubs.length > 0) {
-      const candidate = subSubs.reduce((max, node) => Math.max(max, node.x), sub.x);
-      if (candidate > rightMost) rightMost = candidate;
-    } else if (sub.x > rightMost) {
-      rightMost = sub.x;
-    }
-  });
-  return rightMost;
-}
-
-/**
- * Recalculates the positions of all nodes based on the current detail level.
- * Sub nodes are reset unconditionally; sub‑sub nodes are reset only if detailLevel >= 2.
- */
-export function updateLayout(mainNodes, subNodes, subSubNodes, config, detailLevel) {
-  subNodes.forEach(n => { n.x = 0; n.y = 0; });
-  if (detailLevel >= 2) {
-    subSubNodes.forEach(n => { n.x = 0; n.y = 0; });
-  }
+  // Place the first main node
+  if (mainNodes.length === 0) return;
   mainNodes[0].x = config.mainStartX;
-  let currentRight = placeSubBranch(mainNodes[0], subNodes, subSubNodes, config, detailLevel);
+  mainNodes[0].y = config.centerY;
+  placeDescendants(mainNodes[0], 1, detailLevel, config);
+
+  let currentRight = getRightmostX(mainNodes[0]);
   for (let i = 1; i < mainNodes.length; i++) {
-    mainNodes[i].x = currentRight + config.mainSpacing;
-    const newRight = placeSubBranch(mainNodes[i], subNodes, subSubNodes, config, detailLevel);
-    currentRight = Math.max(currentRight, newRight, mainNodes[i].x);
+    const node = mainNodes[i];
+    node.x = currentRight + config.mainSpacing;
+    node.y = config.centerY;
+    placeDescendants(node, 1, detailLevel, config);
+    currentRight = Math.max(currentRight, getRightmostX(node), node.x);
   }
+}
+
+/**
+ * Recursively sets x,y=0 for a node and all children.
+ */
+function resetPositions(node) {
+  node.x = 0;
+  node.y = 0;
+  if (node.children) {
+    node.children.forEach(c => resetPositions(c));
+  }
+}
+
+/**
+ * placeDescendants:
+ * Recursively positions a node's children if depth <= detailLevel.
+ * If depth > detailLevel, the child collapses to the parent’s position.
+ */
+function placeDescendants(node, depth, detailLevel, config) {
+  if (!node.children || node.children.length === 0) return;
+  const n = node.children.length;
+  node.children.forEach((child, i) => {
+    if (depth <= detailLevel) {
+      // Expand
+      child.x = node.x + offsetX(depth);
+      // Siblings are stacked vertically around parent's y
+      child.y = node.y + (i - (n - 1) / 2) * offsetY(depth);
+    } else {
+      // Collapse
+      child.x = node.x;
+      child.y = node.y;
+    }
+    placeDescendants(child, depth + 1, detailLevel, config);
+  });
+}
+
+/**
+ * Return the rightmost x in a node's entire subtree.
+ */
+function getRightmostX(node) {
+  let maxX = node.x;
+  if (node.children) {
+    node.children.forEach(c => {
+      const childMax = getRightmostX(c);
+      if (childMax > maxX) maxX = childMax;
+    });
+  }
+  return maxX;
+}
+
+/**
+ * Horizontal offset for each new depth (sub, sub-sub, etc.)
+ */
+function offsetX(depth) {
+  if (depth === 1) return 400; // sub offset
+  if (depth === 2) return 400; // sub-sub offset
+  return 400;                 // deeper layers, same offset
+}
+
+/**
+ * Vertical spacing for siblings at each depth.
+ */
+function offsetY(depth) {
+  if (depth === 1) return 350;  // sub spacing
+  if (depth === 2) return 125;  // sub-sub spacing
+  return 80; // deeper levels
 }

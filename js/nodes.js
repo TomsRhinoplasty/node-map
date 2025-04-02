@@ -1,62 +1,68 @@
-export function createNodes(svgGroup, mainNodes, subNodes, subSubNodes, config) {
-  // Create groups for main nodes.
-  const mainGroups = svgGroup.selectAll("g.main-node-group")
-    .data(mainNodes, d => d.id)
-    .enter()
-    .append("g")
-    .attr("id", d => "main-node-group-" + d.id)
-    .attr("class", d => `main-node-group ${d.role}`)
-    .attr("transform", d => `translate(${d.x}, ${d.y})`);
+// js/nodes.js
 
-  mainGroups.append("circle")
-    .attr("r", config.mainRadius)
-    .attr("class", d => `main-node ${d.role}`);
+/**
+ * gatherConnectors:
+ * 1) For each main node (except the last), link its deepest visible nodes to the next main node.
+ * 2) Also, link each node to its children (if within the detail level).
+ */
+export function gatherConnectors(mainNodes, detailLevel) {
+  let links = [];
+  for (let i = 0; i < mainNodes.length - 1; i++) {
+    const currentMain = mainNodes[i];
+    const nextMain = mainNodes[i + 1];
+    // Gather only the deepest visible nodes in currentMain’s subtree.
+    const deepestNodes = gatherDeepestVisibleNodes(currentMain, detailLevel, 0);
+    deepestNodes.forEach(v => {
+      if (v !== nextMain) {
+        links.push({ source: v, target: nextMain });
+      }
+    });
+  }
 
-  mainGroups.append("text")
-    .attr("class", "node-text main-text")
-    .attr("dy", config.mainRadius + config.mainTextOffset)
-    .attr("text-anchor", "middle")
-    .text(d => d.title);
+  // Link each node to its children if they are within the detail level.
+  mainNodes.forEach(m => {
+    gatherParentChildLinks(m, detailLevel, 0, links);
+  });
 
-  // Create groups for sub nodes.
-  const subGroups = svgGroup.selectAll("g.sub-node-group")
-    .data(subNodes, d => d.id)
-    .enter()
-    .append("g")
-    .attr("id", d => "sub-node-group-" + d.id)
-    .attr("class", d => `sub-node-group ${d.role}`)
-    .attr("transform", d => `translate(${d.x}, ${d.y})`);
-
-  subGroups.append("circle")
-    .attr("r", config.subRadius)
-    .attr("class", d => `sub-node ${d.role}`);
-
-  subGroups.append("text")
-    .attr("class", "node-text sub-text")
-    .attr("dy", config.subRadius + config.subTextOffset)
-    .attr("text-anchor", "middle")
-    .text(d => d.title);
-
-  // Create groups for sub‑sub nodes.
-  const subSubGroups = svgGroup.selectAll("g.subsub-node-group")
-    .data(subSubNodes, d => d.id)
-    .enter()
-    .append("g")
-    .attr("id", d => "subsub-node-group-" + d.id)
-    .attr("class", d => `subsub-node-group ${d.role}`)
-    .attr("transform", d => `translate(${d.x}, ${d.y})`);
-
-  subSubGroups.append("circle")
-    .attr("r", config.subSubRadius)
-    .attr("class", d => `sub-sub-node ${d.role}`);
-
-  subSubGroups.append("text")
-    .attr("class", "node-text subsub-text")
-    .attr("dy", config.subSubRadius + config.subSubTextOffset)
-    .attr("text-anchor", "middle")
-    .text(d => d.title);
+  return links;
 }
 
+/**
+ * gatherDeepestVisibleNodes:
+ * Returns the deepest visible nodes in a subtree up to the given detail level.
+ * If a node has children and its depth is less than the detail level,
+ * it recurses and returns its deepest visible children; otherwise, returns the node itself.
+ */
+function gatherDeepestVisibleNodes(node, detailLevel, depth) {
+  if (!node.children || node.children.length === 0 || depth === detailLevel) {
+    return [node];
+  }
+  let results = [];
+  node.children.forEach(child => {
+    if (depth < detailLevel) {
+      results = results.concat(gatherDeepestVisibleNodes(child, detailLevel, depth + 1));
+    }
+  });
+  return results.length > 0 ? results : [node];
+}
+
+/**
+ * gatherParentChildLinks:
+ * For each node, if its depth is less than the detail level, link it to its children and recurse.
+ */
+function gatherParentChildLinks(node, detailLevel, depth, links) {
+  if (!node.children) return;
+  if (depth < detailLevel) {
+    node.children.forEach(child => {
+      links.push({ source: node, target: child });
+      gatherParentChildLinks(child, detailLevel, depth + 1, links);
+    });
+  }
+}
+
+/**
+ * Draws a legend in the SVG.
+ */
 export function drawLegend(svg) {
   const legend = svg.append("g")
                     .attr("class", "legend")

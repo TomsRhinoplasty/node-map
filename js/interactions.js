@@ -1,7 +1,5 @@
-/**
- * Binds a tooltip to all circles in the provided SVG group.
- * The tooltip content is set using .text() to avoid HTML injection.
- */
+// js/interactions.js
+
 export function bindTooltip(svgGroup, tooltip) {
   svgGroup.selectAll("circle")
     .on("mouseover", (event, d) => {
@@ -19,23 +17,13 @@ export function bindTooltip(svgGroup, tooltip) {
     });
 }
 
-/**
- * Initializes zoom behavior on the SVG element.
- */
 export function initZoom(svg, g, zoomBehavior) {
   svg.call(zoomBehavior)
      .on("start.zoom", () => svg.style("cursor", "grabbing"))
      .on("end.zoom", () => svg.style("cursor", "grab"));
 }
 
-/**
- * Binds expand and collapse buttons to the provided callback.
- */
 export function bindExpandCollapse(expandButton, collapseButton, updateDiagramCallback) {
-  expandButton.on("click", () => {
-    updateDiagramCallback("expand");
-  });
-  collapseButton.on("click", () => {
-    updateDiagramCallback("collapse");
-  });
+  expandButton.on("click", () => updateDiagramCallback("expand"));
+  collapseButton.on("click", () => updateDiagramCallback("collapse"));
 }
