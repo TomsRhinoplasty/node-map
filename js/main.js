@@ -1,61 +1,66 @@
-// js/main.js
+/**
+ * Main module that initializes the diagram, sets up event listeners,
+ * and orchestrates the interactions between various modules.
+ * @module main
+ */
+
 import { mainNodes } from "./data.js";
 import { updateLayout } from "./layout.js";
 import { gatherConnectors, drawLegend } from "./nodes.js";
 import { bindTooltip, initZoom, bindExpandCollapse } from "./interactions.js";
 import { animateZoomToBounds } from "./animation.js";
+import { config } from "./config.js";
 
-// Layout config
-const config = {
-  mainStartX: 100,
-  mainSpacing: 500,
-  centerY: window.innerHeight / 2,
-  mainRadius: 50,
-  subRadius: 20,
-  subSubRadius: 5
-};
-
-// currentDetailLevel controls how many layers are visible (0 = main only, 1 = main+sub, etc.)
+// Global variables and state
 let currentDetailLevel = 0;
 let prevDetailLevel = 0;
-
-// Flag to detect if the user has manually navigated (scroll or drag).
 let manualInteraction = false;
-
-// Flatten all nodes, assign each node its depth, store a parent pointer, etc.
 let allNodes = [];
+
+/**
+ * Recursively gathers all nodes from the hierarchical structure.
+ * Each node is assigned its depth and a reference to its parent.
+ * @param {Object} node - The node object.
+ * @param {number} depth - Current depth level.
+ * @param {Object|null} parent - The parent node.
+ */
 function gatherAllNodes(node, depth = 0, parent = null) {
   node.depth = depth;
   node.parent = parent;
   allNodes.push(node);
-  node.currentX = 0;
-  node.currentY = 0;
+  node.currentX = node.x || 0;
+  node.currentY = node.y || 0;
   node.expanding = false;
   node.collapsing = false;
   if (node.children) {
     node.children.forEach(child => gatherAllNodes(child, depth + 1, node));
   }
 }
+
+// Initialize allNodes from mainNodes
 mainNodes.forEach(m => gatherAllNodes(m));
 
-// Compute the maximum depth from the data
+// Compute the maximum depth from all nodes
 const maxDepth = Math.max(...allNodes.map(d => d.depth));
 
-// Create the SVG and main group
-const svg = d3.select("#map")
-  .attr("width", window.innerWidth)
-  .attr("height", window.innerHeight);
+// Initialize SVG and main group
+const svg = d3.select("#map");
+if (svg.empty()) {
+  console.error("SVG element with id 'map' not found.");
+}
+svg.attr("width", window.innerWidth)
+   .attr("height", window.innerHeight);
 
 const g = svg.append("g");
 
-// Groups for links and nodes
+// Create groups for links and nodes
 const linkGroup = g.append("g").attr("class", "links");
 const nodeGroup = g.append("g").attr("class", "nodes");
 
-// Create empty link selection
+// Create initial link selection
 let linkSel = linkGroup.selectAll("line.link");
 
-// Node selection
+// Create node selection and append group elements for each node
 let nodeSel = nodeGroup.selectAll("g.node")
   .data(allNodes, d => d.id)
   .enter()
@@ -64,12 +69,12 @@ let nodeSel = nodeGroup.selectAll("g.node")
   .attr("id", d => "node-" + d.id)
   .attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
 
-// Sort nodes so deeper nodes are drawn first (in the background)
+// Ensure deeper nodes are drawn first
 nodeSel.sort((a, b) => b.depth - a.depth);
 
-// Circle and text
+// Append circles and text for each node
 nodeSel.append("circle")
-  .attr("r", d => fullRadius(d));
+  .attr("r", d => computeFullRadius(d));
 
 nodeSel.append("text")
   .attr("dy", d => {
@@ -81,13 +86,12 @@ nodeSel.append("text")
   .attr("text-anchor", "middle")
   .text(d => d.title);
 
-// Draw legend
+// Draw the legend
 drawLegend(svg);
 
-// D3 zoom
+// Set up D3 zoom behavior
 const zoomBehavior = d3.zoom()
   .on("zoom", event => {
-    // If user-initiated, mark manual interaction
     if (event.sourceEvent) {
       manualInteraction = true;
     }
@@ -95,21 +99,22 @@ const zoomBehavior = d3.zoom()
   });
 initZoom(svg, g, zoomBehavior);
 
-// Tooltip
+// Bind tooltip events
 const tooltip = d3.select("#tooltip");
 bindTooltip(g, tooltip);
 
-// Reset Zoom button
+// Set up Reset Zoom button functionality
 d3.select("#resetZoom").on("click", () => {
-  // Re-enable auto zoom
   manualInteraction = false;
   autoZoom();
 });
 
 /**
- * Compute the full radius of a node based on its depth.
+ * Computes the full radius of a node based on its depth.
+ * @param {Object} d - The node object.
+ * @returns {number} The computed radius.
  */
-function fullRadius(d) {
+function computeFullRadius(d) {
   if (d.depth === 0) return config.mainRadius;
   if (d.depth === 1) return config.subRadius;
   if (d.depth === 2) return config.subSubRadius;
@@ -117,13 +122,13 @@ function fullRadius(d) {
 }
 
 /**
- * Return the bounding box (x, y, width, height) for all final node positions
- * using node.x/node.y plus the node's radius.
+ * Computes the bounding box that contains all nodes.
+ * @returns {Object} Bounding box with x, y, width, and height.
  */
 function getLayoutBounds() {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   allNodes.forEach(n => {
-    const r = fullRadius(n);
+    const r = computeFullRadius(n);
     const left = n.x - r;
     const right = n.x + r;
     const top = n.y - r;
@@ -133,22 +138,15 @@ function getLayoutBounds() {
     if (top < minY) minY = top;
     if (bottom > maxY) maxY = bottom;
   });
-  return {
-    x: minX,
-    y: minY,
-    width: (maxX - minX),
-    height: (maxY - minY)
-  };
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 /**
- * autoZoom: if manualInteraction is false, we compute the layout bounds
- * and zoom to fit that bounding box in the view.
+ * Automatically zooms the SVG to fit all nodes, unless manual interaction has occurred.
  */
 function autoZoom() {
   if (!manualInteraction) {
     const bounds = getLayoutBounds();
-    // Add a short timeout so layout changes can settle
     setTimeout(() => {
       animateZoomToBounds(svg, zoomBehavior, bounds, 500);
     }, 50);
@@ -156,7 +154,7 @@ function autoZoom() {
 }
 
 /**
- * refreshDiagram re-runs the layout and link computations.
+ * Refreshes the diagram by updating layout and connectors.
  */
 function refreshDiagram() {
   updateLayout(mainNodes, currentDetailLevel, config);
@@ -170,15 +168,14 @@ function refreshDiagram() {
 }
 
 /**
- * updateDiagram(action)
- * Changes currentDetailLevel, sets animation flags for nodes that are expanding or collapsing.
+ * Updates the diagram based on the action ("expand" or "collapse").
+ * @param {string} action - The action to perform.
  */
 function updateDiagram(action) {
   if (action === "expand") {
     if (currentDetailLevel >= maxDepth) return;
     prevDetailLevel = currentDetailLevel;
     currentDetailLevel = Math.min(currentDetailLevel + 1, maxDepth);
-    // For nodes in the new layer, start them at parent's center
     allNodes.forEach(n => {
       if (n.depth === currentDetailLevel) {
         const parent = n.parent;
@@ -192,7 +189,6 @@ function updateDiagram(action) {
   } else if (action === "collapse") {
     if (currentDetailLevel <= 0) return;
     prevDetailLevel = currentDetailLevel;
-    // Mark nodes in the layer being collapsed
     allNodes.forEach(n => {
       if (n.depth === prevDetailLevel) {
         n.collapsing = true;
@@ -208,11 +204,15 @@ function updateDiagram(action) {
     currentDetailLevel = Math.max(currentDetailLevel - 1, 0);
   }
   refreshDiagram();
-  // Auto zoom if no manual interaction
   autoZoom();
 }
 
-// Helper: find a visible ancestor at a given depth
+/**
+ * Finds the closest ancestor of a node at the specified depth.
+ * @param {Object} node - The node object.
+ * @param {number} depthWanted - The desired depth.
+ * @returns {Object|null} The ancestor node at the desired depth, or null if not found.
+ */
 function findParentInChain(node, depthWanted) {
   while (node && node.depth !== depthWanted) {
     node = node.parent;
@@ -220,7 +220,11 @@ function findParentInChain(node, depthWanted) {
   return node;
 }
 
-// Helper: get the stored "expanded" (full target) position for a node
+/**
+ * Retrieves the stored expanded position for a node.
+ * @param {Object} d - The node object.
+ * @returns {Object} Object with x and y coordinates.
+ */
 function getFullPosition(d) {
   if (d.expandedX !== undefined && d.expandedY !== undefined) {
     return { x: d.expandedX, y: d.expandedY };
@@ -228,20 +232,16 @@ function getFullPosition(d) {
   return { x: d.x, y: d.y };
 }
 
-// Initial layout
+// Initial layout rendering.
 refreshDiagram();
-
-// Initialize node positions to final layout positions
 allNodes.forEach(n => {
   n.currentX = n.x;
   n.currentY = n.y;
 });
 nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
-
-// Auto-zoom on load (if no manual interaction yet)
 autoZoom();
 
-// Animation loop for smooth transitions
+// Animation loop for smooth transitions.
 let lastTime = Date.now();
 function animate() {
   const now = Date.now();
@@ -250,25 +250,25 @@ function animate() {
   const speed = 5;
   const t = 1 - Math.exp(-speed * dt / 1000);
 
-  // Animate positions toward final layout
+  // Animate nodes toward their final positions.
   allNodes.forEach(n => {
     n.currentX += (n.x - n.currentX) * t;
     n.currentY += (n.y - n.currentY) * t;
   });
 
-  // Update node positions
+  // Update node positions in the DOM.
   nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
 
-  // Update circle sizes
+  // Update circle sizes based on current detail level and animation state.
   nodeSel.select("circle").attr("r", d => {
     if (d.depth <= currentDetailLevel || d.expanding || d.collapsing) {
-      return fullRadius(d);
+      return computeFullRadius(d);
     } else {
       return 0;
     }
   });
 
-  // Update text opacity
+  // Update text opacity based on expansion state.
   nodeSel.select("text").style("opacity", d => {
     if (d.depth === 0) return 1;
     if (d.depth < currentDetailLevel) return 1;
@@ -287,29 +287,27 @@ function animate() {
          : getFullPosition(d));
     const fullDistance = Math.sqrt((fullPos.x - parent.x) ** 2 + (fullPos.y - parent.y) ** 2);
     const factor = (fullDistance > 0) ? Math.min(1, currentDistance / fullDistance) : 1;
-    if (factor <= 0.5) return 0;
-    return (factor - 0.5) / 0.5;
+    return factor <= 0.5 ? 0 : (factor - 0.5) / 0.5;
   });
 
-  // Update connector positions
-  linkSel
-    .attr("x1", d => d.source.currentX)
-    .attr("y1", d => d.source.currentY)
-    .attr("x2", d => d.target.currentX)
-    .attr("y2", d => d.target.currentY);
+  // Update connector positions.
+  linkSel.attr("x1", d => d.source.currentX)
+         .attr("y1", d => d.source.currentY)
+         .attr("x2", d => d.target.currentX)
+         .attr("y2", d => d.target.currentY);
 
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
 
-// Bind expand/collapse
+// Bind expand and collapse button events.
 bindExpandCollapse(
   d3.select("#expandButton"),
   d3.select("#collapseButton"),
   updateDiagram
 );
 
-// Debounce for window resize
+// Debounce function for handling window resize events.
 function debounce(func, wait) {
   let timeout;
   return function(...args) {
@@ -318,7 +316,7 @@ function debounce(func, wait) {
   };
 }
 
-// Handle window resize
+// Update SVG dimensions and re-render layout on window resize.
 window.addEventListener("resize", debounce(() => {
   const w = window.innerWidth;
   const h = window.innerHeight;

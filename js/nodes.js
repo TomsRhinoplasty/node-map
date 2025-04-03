@@ -1,16 +1,22 @@
-// js/nodes.js
+/**
+ * Module for node-related functionalities, such as gathering connectors and drawing the legend.
+ * @module nodes
+ */
 
 /**
- * gatherConnectors:
- * 1) For each main node (except the last), link its deepest visible nodes to the next main node.
- * 2) Also, link each node to its children (if within the detail level).
+ * Gathers connector links between nodes.
+ * 1) For each main node (except the last), links its deepest visible nodes to the next main node.
+ * 2) Links each node to its children if within the detail level.
+ * @param {Array} mainNodes - Array of main nodes.
+ * @param {number} detailLevel - The current detail level.
+ * @returns {Array} Array of link objects with source and target nodes.
  */
 export function gatherConnectors(mainNodes, detailLevel) {
   let links = [];
   for (let i = 0; i < mainNodes.length - 1; i++) {
     const currentMain = mainNodes[i];
     const nextMain = mainNodes[i + 1];
-    // Gather only the deepest visible nodes in currentMain’s subtree.
+    // Gather the deepest visible nodes in the current main node’s subtree.
     const deepestNodes = gatherDeepestVisibleNodes(currentMain, detailLevel, 0);
     deepestNodes.forEach(v => {
       if (v !== nextMain) {
@@ -28,10 +34,11 @@ export function gatherConnectors(mainNodes, detailLevel) {
 }
 
 /**
- * gatherDeepestVisibleNodes:
- * Returns the deepest visible nodes in a subtree up to the given detail level.
- * If a node has children and its depth is less than the detail level,
- * it recurses and returns its deepest visible children; otherwise, returns the node itself.
+ * Recursively gathers the deepest visible nodes in a subtree up to the given detail level.
+ * @param {Object} node - The node object.
+ * @param {number} detailLevel - The maximum depth to display.
+ * @param {number} depth - Current depth.
+ * @returns {Array} Array of deepest visible nodes.
  */
 function gatherDeepestVisibleNodes(node, detailLevel, depth) {
   if (!node.children || node.children.length === 0 || depth === detailLevel) {
@@ -47,8 +54,11 @@ function gatherDeepestVisibleNodes(node, detailLevel, depth) {
 }
 
 /**
- * gatherParentChildLinks:
- * For each node, if its depth is less than the detail level, link it to its children and recurse.
+ * Recursively gathers links between parent and child nodes.
+ * @param {Object} node - The node object.
+ * @param {number} detailLevel - The current detail level.
+ * @param {number} depth - Current depth.
+ * @param {Array} links - Array to accumulate the links.
  */
 function gatherParentChildLinks(node, detailLevel, depth, links) {
   if (!node.children) return;
@@ -61,7 +71,8 @@ function gatherParentChildLinks(node, detailLevel, depth, links) {
 }
 
 /**
- * Draws a legend in the SVG.
+ * Draws a legend on the SVG element to indicate the roles of tasks.
+ * @param {Object} svg - The D3 selection of the SVG element.
  */
 export function drawLegend(svg) {
   const legend = svg.append("g")

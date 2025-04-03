@@ -1,18 +1,25 @@
-// js/layout.js
+/**
+ * Module for layout computations.
+ * @module layout
+ */
 
 /**
  * Recursively positions each main node and its descendants.
- * mainNodes[i] is placed to the right of the previous main node's rightmost X.
- *
- * detailLevel: how many levels of children to show (0 = only main, 1 = main+sub, etc.).
+ * The first main node starts at the configured starting position,
+ * and subsequent main nodes are placed to the right of the previous node's rightmost boundary.
+ * @param {Array} mainNodes - Array of main nodes.
+ * @param {number} detailLevel - Number of layers of children to display (0 = only main, 1 = main+sub, etc.).
+ * @param {Object} config - Configuration object with layout settings.
  */
 export function updateLayout(mainNodes, detailLevel, config) {
-  // Reset positions for all nodes
-  // (We do this so that a collapsed node doesn't remain at some old position.)
+  if (!mainNodes || !Array.isArray(mainNodes) || mainNodes.length === 0) {
+    console.warn("No main nodes provided for layout update.");
+    return;
+  }
+  // Reset positions for all nodes to avoid leftover positions from collapsed nodes.
   mainNodes.forEach(m => resetPositions(m));
 
-  // Place the first main node
-  if (mainNodes.length === 0) return;
+  // Place the first main node.
   mainNodes[0].x = config.mainStartX;
   mainNodes[0].y = config.centerY;
   placeDescendants(mainNodes[0], 1, detailLevel, config);
@@ -28,32 +35,36 @@ export function updateLayout(mainNodes, detailLevel, config) {
 }
 
 /**
- * Recursively sets x,y=0 for a node and all children.
+ * Recursively resets positions (x, y) for a node and all its children.
+ * @param {Object} node - The node object.
  */
 function resetPositions(node) {
   node.x = 0;
   node.y = 0;
-  if (node.children) {
+  if (node.children && Array.isArray(node.children)) {
     node.children.forEach(c => resetPositions(c));
   }
 }
 
 /**
- * placeDescendants:
  * Recursively positions a node's children if depth <= detailLevel.
- * If depth > detailLevel, the child collapses to the parent’s position.
+ * If depth > detailLevel, the child is collapsed to the parent's position.
+ * @param {Object} node - The parent node.
+ * @param {number} depth - Current depth of recursion.
+ * @param {number} detailLevel - Maximum depth to expand.
+ * @param {Object} config - Configuration object with layout settings.
  */
 function placeDescendants(node, depth, detailLevel, config) {
   if (!node.children || node.children.length === 0) return;
   const n = node.children.length;
   node.children.forEach((child, i) => {
     if (depth <= detailLevel) {
-      // Expand
+      // Expand node: assign position offset from parent.
       child.x = node.x + offsetX(depth);
-      // Siblings are stacked vertically around parent's y
+      // Arrange siblings vertically around parent's y.
       child.y = node.y + (i - (n - 1) / 2) * offsetY(depth);
     } else {
-      // Collapse
+      // Collapse node: align with parent's position.
       child.x = node.x;
       child.y = node.y;
     }
@@ -62,11 +73,13 @@ function placeDescendants(node, depth, detailLevel, config) {
 }
 
 /**
- * Return the rightmost x in a node's entire subtree.
+ * Returns the rightmost x-coordinate within a node's subtree.
+ * @param {Object} node - The node object.
+ * @returns {number} Rightmost x-coordinate.
  */
 function getRightmostX(node) {
   let maxX = node.x;
-  if (node.children) {
+  if (node.children && Array.isArray(node.children)) {
     node.children.forEach(c => {
       const childMax = getRightmostX(c);
       if (childMax > maxX) maxX = childMax;
@@ -76,19 +89,21 @@ function getRightmostX(node) {
 }
 
 /**
- * Horizontal offset for each new depth (sub, sub-sub, etc.)
+ * Computes horizontal offset for a given depth level.
+ * @param {number} depth - The depth level (1 for sub, 2 for sub-sub, etc.).
+ * @returns {number} Horizontal offset.
  */
 function offsetX(depth) {
-  if (depth === 1) return 400; // sub offset
-  if (depth === 2) return 400; // sub-sub offset
-  return 400;                 // deeper layers, same offset
+  return 400; // Uniform horizontal offset for all depths.
 }
 
 /**
- * Vertical spacing for siblings at each depth.
+ * Computes vertical spacing for sibling nodes at a given depth.
+ * @param {number} depth - The depth level.
+ * @returns {number} Vertical spacing.
  */
 function offsetY(depth) {
-  if (depth === 1) return 350;  // sub spacing
-  if (depth === 2) return 125;  // sub-sub spacing
-  return 80; // deeper levels
+  if (depth === 1) return 350;  // Spacing for sub nodes.
+  if (depth === 2) return 125;  // Spacing for sub-sub nodes.
+  return 80; // Spacing for deeper layers.
 }

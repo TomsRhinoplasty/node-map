@@ -1,4 +1,8 @@
-/* Full window with no scrollbars, black background */
+/* 
+  Global Styles
+  -------------
+  Full window with no scrollbars and a black background.
+*/
 html, body {
   margin: 0;
   padding: 0;
@@ -8,7 +12,11 @@ html, body {
   background: #000;
 }
 
-/* The SVG fills the window and acts like a map */
+/*
+  SVG Styles
+  ----------
+  The SVG fills the window, acts as a canvas, and shows a grab cursor.
+*/
 svg {
   width: 100%;
   height: 100%;
@@ -16,13 +24,16 @@ svg {
   background: #000;
 }
 
-/* Node Styles */
+/*
+  Node Styles
+  -----------
+  Circles for nodes get a white stroke. Fill colors depend on role.
+*/
 .node circle {
   stroke: #fff;
   stroke-width: 2px;
 }
 
-/* Role-based fill colors */
 .ai {
   fill: #4CAF50; /* green */
 }
@@ -32,6 +43,12 @@ svg {
 .hybrid {
   fill: #2196F3; /* blue */
 }
+
+/*
+  Node Text
+  ---------
+  Text inside nodes is centered, white, and uses a sans-serif font.
+*/
 .node text {
   font-family: sans-serif;
   font-size: 14px;
@@ -40,7 +57,11 @@ svg {
   pointer-events: none;
 }
 
-/* Animated connector styling */
+/*
+  Connector (Link) Styling
+  --------------------------
+  Drawn as dashed lines with a simple animation.
+*/
 .link {
   stroke: rgba(255, 255, 255, 0.3);
   stroke-width: 2px;
@@ -57,7 +78,11 @@ svg {
   }
 }
 
-/* Tooltip styling */
+/*
+  Tooltip Styling
+  ---------------
+  Tooltip appears near the cursor with a white background and black text.
+*/
 #tooltip {
   position: absolute;
   background: #fff;
@@ -72,7 +97,11 @@ svg {
   z-index: 10;
 }
 
-/* Reset Zoom and Expand/Collapse Button styling */
+/*
+  Button Styling
+  --------------
+  Reset Zoom and Expand/Collapse buttons are positioned in the top right.
+*/
 #resetZoom, #collapseButton, #expandButton {
   position: absolute;
   top: 10px;
@@ -87,7 +116,11 @@ svg {
 #collapseButton { right: 120px; }
 #expandButton { right: 230px; }
 
-/* Legend styling */
+/*
+  Legend Styling
+  --------------
+  The legend shows which colors correspond to each task role.
+*/
 .legend text {
   font-family: sans-serif;
   font-size: 14px;

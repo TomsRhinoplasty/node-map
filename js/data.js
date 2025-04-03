@@ -1,6 +1,7 @@
-// js/data.js
-// Each object in mainNodes is a "main" node. Then each has a children array
-// for sub nodes, which may have further children, etc.
+/**
+ * Data module containing the main nodes and their hierarchical structure.
+ * @module data
+ */
 
 export const mainNodes = [
   {
