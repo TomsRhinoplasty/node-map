@@ -94,6 +94,11 @@ function refreshDiagram() {
         n.y = n.parent.y;
       }
     }
+    // For new main nodes, force currentX/Y to their computed values so they don't animate from (0,0)
+    if (n.depth === 0 && n.isNew) {
+      n.currentX = n.x;
+      n.currentY = n.y;
+    }
   });
   // Apply repulsion simulation to visible nodes.
   applyRepulsionToVisibleNodes();
@@ -124,8 +129,16 @@ function applyRepulsionToVisibleNodes() {
   }
 }
 
+/* ===============================
+   Node Creation (Double-click) Logic
+   =============================== */
+// This handler is used when a user double-clicks an existing node to create a child node.
+// The update now resets manualInteraction and calls autoZoom() after creation so that
+// the full map (including newly created child nodes) is always visible.
 function dblclickHandler(event, parentNode) {
   event.stopPropagation();
+  // Reset auto zoom flag so that autoZoom will run.
+  manualInteraction = false;
   const newId = "new_" + Date.now();
   const newNode = {
     id: newId,
@@ -154,16 +167,35 @@ function dblclickHandler(event, parentNode) {
   if (!newNodeSelection.empty()) {
     newNodeSelection.raise();
   }
+  autoZoom();
 }
 
 function bindNodeEvents() {
   nodeGroup.selectAll("g.node").on("dblclick", dblclickHandler);
 }
 
+/* ===============================
+   Utility Functions for Node Appearance
+   =============================== */
 function computeFullRadius(d) {
-  if (d.title === "New Node" && d.role === "human" && d.depth >= 1) {
-    return 20;
+  // For new main nodes, animate radius growth.
+  if (d.isNew) {
+    // Increase growthProgress gradually.
+    d.growthProgress = (d.growthProgress || 0) + 0.05;
+    if (d.growthProgress >= 1) {
+      d.growthProgress = 1;
+      d.isNew = false;
+    }
+    return computeStandardRadius(d) * d.growthProgress;
   }
+  if (d.depth <= currentDetailLevel || d.expanding || d.collapsing) {
+    return computeStandardRadius(d);
+  } else {
+    return 0;
+  }
+}
+
+function computeStandardRadius(d) {
   if (d.depth === 0) return config.mainRadius;
   if (d.depth === 1) return config.subRadius;
   if (d.depth === 2) return config.subSubRadius;
@@ -186,6 +218,9 @@ function getLayoutBounds() {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+/* ===============================
+   Auto Zooming and Animation
+   =============================== */
 function autoZoom() {
   if (!manualInteraction) {
     const bounds = getLayoutBounds();
@@ -210,13 +245,7 @@ function animate() {
   
   nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
   
-  nodeSel.select("circle").attr("r", d => {
-    if (d.depth <= currentDetailLevel || d.expanding || d.collapsing) {
-      return computeFullRadius(d);
-    } else {
-      return 0;
-    }
-  });
+  nodeSel.select("circle").attr("r", d => computeFullRadius(d));
   
   // Fade text: show only for nodes at or above the current expanded depth.
   nodeSel.select("text").style("opacity", d => (d.depth <= currentDetailLevel ? 1 : 0));
@@ -374,28 +403,28 @@ function closeModal() {
   document.getElementById("mapLibraryModal").classList.add("hidden");
 }
 
-document.getElementById("newMapButton").addEventListener("click", () => {
-  if (confirm("Creating a new map will clear the current one. Continue?")) {
-    reloadDiagram(newMap());
-  }
-});
-
-document.getElementById("saveMapButton").addEventListener("click", saveMap);
-document.getElementById("loadMapButton").addEventListener("click", showMapLibrary);
-document.getElementById("closeModal").addEventListener("click", closeModal);
-
+// Updated double-click handler on blank space for new main node creation.
+// When you double-click the background, a new main node is added at the end of the map.
+// The new node is marked as isNew so that it will grow from radius 0 to full size.
+// Here, we explicitly reset manualInteraction so that autoZoom always runs.
 svg.on("dblclick", function(event) {
   if (event.target === svg.node()) {
+    manualInteraction = false;
     const newId = "new_" + Date.now();
     const newMainNode = {
       id: newId,
       title: "New Main Node",
       role: "human",
       desc: "New main node.",
-      children: []
+      children: [],
+      isNew: true,
+      growthProgress: 0
     };
     currentMapData.push(newMainNode);
+    buildAllNodes();
     refreshDiagram();
+    initSelections();
+    autoZoom();
   }
 });
 
