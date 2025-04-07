@@ -1,8 +1,4 @@
-/* 
-  Global Styles
-  -------------
-  Full window with no scrollbars and a black background.
-*/
+/* Global Styles */
 html, body {
   margin: 0;
   padding: 0;
@@ -12,11 +8,7 @@ html, body {
   background: #000;
 }
 
-/*
-  SVG Styles
-  ----------
-  The SVG fills the window, acts as a canvas, and shows a grab cursor.
-*/
+/* SVG Styles */
 svg {
   width: 100%;
   height: 100%;
@@ -24,11 +16,7 @@ svg {
   background: #000;
 }
 
-/*
-  Node Styles
-  -----------
-  Circles for nodes get a white stroke. Fill colors depend on role.
-*/
+/* Node Styles */
 .node circle {
   stroke: #fff;
   stroke-width: 2px;
@@ -44,11 +32,7 @@ svg {
   fill: #2196F3; /* blue */
 }
 
-/*
-  Node Text
-  ---------
-  Text inside nodes is centered, white, and uses a sans-serif font.
-*/
+/* Node Text */
 .node text {
   font-family: sans-serif;
   font-size: 14px;
@@ -57,11 +41,7 @@ svg {
   pointer-events: none;
 }
 
-/*
-  Connector (Link) Styling
-  --------------------------
-  Drawn as dashed lines with a simple animation.
-*/
+/* Connector (Link) Styling */
 .link {
   stroke: rgba(255, 255, 255, 0.3);
   stroke-width: 2px;
@@ -78,11 +58,7 @@ svg {
   }
 }
 
-/*
-  Tooltip Styling
-  ---------------
-  Tooltip appears near the cursor with a white background and black text.
-*/
+/* Tooltip Styling */
 #tooltip {
   position: absolute;
   background: #fff;
@@ -97,11 +73,7 @@ svg {
   z-index: 10;
 }
 
-/*
-  Button Styling (for existing buttons)
-  ---------------------------------------
-  Reset Zoom and Expand/Collapse buttons are positioned in the top right.
-*/
+/* Reset Zoom, Expand/Collapse Buttons */
 #resetZoom, #collapseButton, #expandButton {
   position: absolute;
   top: 10px;
@@ -116,64 +88,49 @@ svg {
 #collapseButton { right: 120px; }
 #expandButton { right: 230px; }
 
-/*
-  Legend Styling
-  --------------
-  The legend shows which colors correspond to each task role.
-*/
+/* Legend Styling */
 .legend text {
   font-family: sans-serif;
   font-size: 14px;
   fill: #fff;
 }
 
-/* --- New Styles for Menu and Modal --- */
-
-/* Menu Container */
+/* Toolbar Menu Styling */
 #menu {
   position: fixed;
-  top: 20px;
-  left: 20px;
-  z-index: 100; /* Above the SVG */
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 40px; /* collapsed height */
   background: rgba(0, 0, 0, 0.8);
-  padding: 15px;
-  border-radius: 8px;
-  animation: slideIn 0.5s ease-out;
+  transition: height 0.3s ease, transform 0.3s ease;
+  transform: translateY(30px); /* mostly hidden */
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-
-/* Menu Buttons */
+#menu:hover {
+  transform: translateY(0);
+  height: 80px;
+}
 #menu button {
+  margin: 0 10px;
+  padding: 8px 12px;
   background: #222;
   border: none;
-  padding: 10px 20px;
   color: #fff;
   font-size: 16px;
   border-radius: 5px;
   cursor: pointer;
   transition: background 0.3s ease, transform 0.3s ease;
 }
-
 #menu button:hover {
   background: #444;
   transform: scale(1.05);
 }
 
-/* Slide In Animation */
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Modal Styles for the Map Library */
+/* Modal Styles */
 .modal {
   position: fixed;
   top: 0;
@@ -187,11 +144,9 @@ svg {
   z-index: 150;
   animation: fadeIn 0.3s ease;
 }
-
 .modal.hidden {
   display: none;
 }
-
 .modal-content {
   background: #111;
   padding: 20px;
@@ -201,12 +156,9 @@ svg {
   color: #fff;
   position: relative;
 }
-
 .modal-content h2 {
   margin-top: 0;
 }
-
-/* Close Button */
 .close {
   position: absolute;
   top: 10px;
@@ -214,8 +166,6 @@ svg {
   font-size: 24px;
   cursor: pointer;
 }
-
-/* Map List Items */
 .mapItem {
   padding: 10px;
   margin: 5px 0;
@@ -227,12 +177,10 @@ svg {
 .mapItem:hover {
   background: #444;
 }
-
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-
 .node:hover {
   cursor: pointer;
 }

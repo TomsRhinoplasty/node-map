@@ -132,12 +132,9 @@ function applyRepulsionToVisibleNodes() {
 /* ===============================
    Node Creation (Double-click) Logic
    =============================== */
-// This handler is used when a user double-clicks an existing node to create a child node.
-// The update now resets manualInteraction and calls autoZoom() after creation so that
-// the full map (including newly created child nodes) is always visible.
+// Handler for double-clicking an existing node to create a child.
 function dblclickHandler(event, parentNode) {
   event.stopPropagation();
-  // Reset auto zoom flag so that autoZoom will run.
   manualInteraction = false;
   const newId = "new_" + Date.now();
   const newNode = {
@@ -180,7 +177,6 @@ function bindNodeEvents() {
 function computeFullRadius(d) {
   // For new main nodes, animate radius growth.
   if (d.isNew) {
-    // Increase growthProgress gradually.
     d.growthProgress = (d.growthProgress || 0) + 0.05;
     if (d.growthProgress >= 1) {
       d.growthProgress = 1;
@@ -247,7 +243,6 @@ function animate() {
   
   nodeSel.select("circle").attr("r", d => computeFullRadius(d));
   
-  // Fade text: show only for nodes at or above the current expanded depth.
   nodeSel.select("text").style("opacity", d => (d.depth <= currentDetailLevel ? 1 : 0));
   
   linkSel.attr("x1", d => d.source.currentX)
@@ -280,6 +275,21 @@ bindExpandCollapse(
   updateDiagram
 );
 
+/* ===============================
+   Menu Button Event Bindings
+   =============================== */
+document.getElementById("newMapButton").addEventListener("click", () => {
+  if (confirm("Creating a new map will clear the current one. Continue?")) {
+    reloadDiagram(newMap());
+  }
+});
+document.getElementById("saveMapButton").addEventListener("click", saveMap);
+document.getElementById("loadMapButton").addEventListener("click", showMapLibrary);
+document.getElementById("closeModal").addEventListener("click", closeModal);
+
+/* ===============================
+   Update Diagram on Expand/Collapse
+   =============================== */
 function updateDiagram(action) {
   if (action === "expand") {
     if (currentDetailLevel >= Math.max(...allNodes.map(d => d.depth))) return;
@@ -346,6 +356,9 @@ function updateDiagram(action) {
   autoZoom();
 }
 
+/* ===============================
+   Map Library and New Map Functions
+   =============================== */
 function newMap() {
   return [
     {
@@ -356,6 +369,23 @@ function newMap() {
       children: []
     }
   ];
+}
+
+function reloadDiagram(newMapData) {
+  currentMapData = newMapData;
+  currentDetailLevel = 0;
+  nodeGroup.selectAll("*").remove();
+  linkGroup.selectAll("*").remove();
+  buildAllNodes();
+  refreshDiagram();
+  initSelections();
+  allNodes.forEach(n => {
+    n.currentX = n.x;
+    n.currentY = n.y;
+  });
+  nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
+  manualInteraction = false;
+  autoZoom();
 }
 
 function saveMap() {
@@ -382,6 +412,7 @@ function showMapLibrary() {
     closeModal();
   });
   mapListDiv.appendChild(defaultOption);
+  
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key.startsWith("map_")) {
@@ -403,10 +434,6 @@ function closeModal() {
   document.getElementById("mapLibraryModal").classList.add("hidden");
 }
 
-// Updated double-click handler on blank space for new main node creation.
-// When you double-click the background, a new main node is added at the end of the map.
-// The new node is marked as isNew so that it will grow from radius 0 to full size.
-// Here, we explicitly reset manualInteraction so that autoZoom always runs.
 svg.on("dblclick", function(event) {
   if (event.target === svg.node()) {
     manualInteraction = false;
