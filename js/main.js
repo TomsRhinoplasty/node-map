@@ -1,33 +1,46 @@
 /**
  * Main module that initializes the diagram, sets up event listeners,
- * and orchestrates the interactions between various modules.
- * @module main
+ * and orchestrates interactions between various modules.
+ *
+ * This version makes it so that each time you press Expand,
+ * all the currently visible nodes (i.e. nodes with depth ≤ currentDetailLevel)
+ * run through a short force simulation that repels them from each other
+ * (while still being attracted to their computed layout positions).
  */
 
-import { mainNodes } from "./data.js";
+import { mainNodes as defaultMap } from "./data.js";
 import { updateLayout } from "./layout.js";
 import { gatherConnectors, drawLegend } from "./nodes.js";
 import { bindTooltip, initZoom, bindExpandCollapse } from "./interactions.js";
 import { animateZoomToBounds } from "./animation.js";
 import { config } from "./config.js";
 
-// Global variables and state
+// Use a mutable copy of the default map data.
+let currentMapData = JSON.parse(JSON.stringify(defaultMap));
 let currentDetailLevel = 0;
 let prevDetailLevel = 0;
 let manualInteraction = false;
 let allNodes = [];
 
-/**
- * Recursively gathers all nodes from the hierarchical structure.
- * Each node is assigned its depth and a reference to its parent.
- * @param {Object} node - The node object.
- * @param {number} depth - Current depth level.
- * @param {Object|null} parent - The parent node.
- */
+// D3 selections
+const svg = d3.select("#map");
+if (svg.empty()) {
+  console.error("SVG element with id 'map' not found.");
+}
+svg.attr("width", window.innerWidth).attr("height", window.innerHeight);
+const g = svg.append("g");
+const linkGroup = g.append("g").attr("class", "links");
+const nodeGroup = g.append("g").attr("class", "nodes");
+let nodeSel, linkSel;
+
+/* ===============================
+   Layout and Data Building
+   =============================== */
 function gatherAllNodes(node, depth = 0, parent = null) {
   node.depth = depth;
   node.parent = parent;
   allNodes.push(node);
+  // Initialize current positions if not already set.
   node.currentX = node.x || 0;
   node.currentY = node.y || 0;
   node.expanding = false;
@@ -37,94 +50,126 @@ function gatherAllNodes(node, depth = 0, parent = null) {
   }
 }
 
-// Initialize allNodes from mainNodes
-mainNodes.forEach(m => gatherAllNodes(m));
-
-// Compute the maximum depth from all nodes
-const maxDepth = Math.max(...allNodes.map(d => d.depth));
-
-// Initialize SVG and main group
-const svg = d3.select("#map");
-if (svg.empty()) {
-  console.error("SVG element with id 'map' not found.");
+function buildAllNodes() {
+  allNodes = [];
+  currentMapData.forEach(m => gatherAllNodes(m));
 }
-svg.attr("width", window.innerWidth)
-   .attr("height", window.innerHeight);
 
-const g = svg.append("g");
+/* ===============================
+   Node & Link Selections and Binding
+   =============================== */
+function initSelections() {
+  nodeSel = nodeGroup.selectAll("g.node").data(allNodes, d => d.id);
+  nodeSel.exit().remove();
+  const newNodes = nodeSel.enter()
+    .append("g")
+    .attr("class", d => `node ${d.role}`)
+    .attr("id", d => "node-" + d.id)
+    .attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
+  newNodes.append("circle")
+    .attr("r", d => computeFullRadius(d));
+  newNodes.append("text")
+    .attr("dy", d => {
+      if (d.depth === 0) return config.mainRadius + 20;
+      if (d.depth === 1) return config.subRadius + 20;
+      if (d.depth === 2) return config.subSubRadius + 20;
+      return 20;
+    })
+    .attr("text-anchor", "middle")
+    .text(d => d.title);
+  nodeSel = newNodes.merge(nodeSel);
+  bindNodeEvents();
+  linkSel = linkGroup.selectAll("line.link");
+}
 
-// Create groups for links and nodes
-const linkGroup = g.append("g").attr("class", "links");
-const nodeGroup = g.append("g").attr("class", "nodes");
-
-// Create initial link selection
-let linkSel = linkGroup.selectAll("line.link");
-
-// Create node selection and append group elements for each node
-let nodeSel = nodeGroup.selectAll("g.node")
-  .data(allNodes, d => d.id)
-  .enter()
-  .append("g")
-  .attr("class", d => `node ${d.role}`)
-  .attr("id", d => "node-" + d.id)
-  .attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
-
-// Ensure deeper nodes are drawn first
-nodeSel.sort((a, b) => b.depth - a.depth);
-
-// Append circles and text for each node
-nodeSel.append("circle")
-  .attr("r", d => computeFullRadius(d));
-
-nodeSel.append("text")
-  .attr("dy", d => {
-    if (d.depth === 0) return config.mainRadius + 20;
-    if (d.depth === 1) return config.subRadius + 20;
-    if (d.depth === 2) return config.subSubRadius + 20;
-    return 20;
-  })
-  .attr("text-anchor", "middle")
-  .text(d => d.title);
-
-// Draw the legend
-drawLegend(svg);
-
-// Set up D3 zoom behavior
-const zoomBehavior = d3.zoom()
-  .on("zoom", event => {
-    if (event.sourceEvent) {
-      manualInteraction = true;
+function refreshDiagram() {
+  // Compute layout positions using the updated layout algorithm.
+  updateLayout(currentMapData, currentDetailLevel, config);
+  // For nodes deeper than currentDetailLevel (and not in an expanding state),
+  // override their positions to collapse them to their parent's coordinates.
+  allNodes.forEach(n => {
+    if (n.depth > currentDetailLevel && !n.expanding) {
+      if (n.parent) {
+        n.x = n.parent.x;
+        n.y = n.parent.y;
+      }
     }
-    g.attr("transform", event.transform);
   });
-initZoom(svg, g, zoomBehavior);
+  // Apply repulsion simulation to visible nodes.
+  applyRepulsionToVisibleNodes();
+  const connectors = gatherConnectors(currentMapData, currentDetailLevel);
+  linkSel = linkSel.data(connectors, d => d.source.id + "-" + d.target.id);
+  linkSel.exit().remove();
+  linkSel = linkSel.enter()
+    .append("line")
+    .attr("class", "link")
+    .merge(linkSel);
+  bindNodeEvents();
+}
 
-// Bind tooltip events
-const tooltip = d3.select("#tooltip");
-bindTooltip(g, tooltip);
+/* ===============================
+   Repulsion Simulation for Visible Nodes
+   =============================== */
+function applyRepulsionToVisibleNodes() {
+  const visibleNodes = allNodes.filter(n => n.depth <= currentDetailLevel);
+  if (visibleNodes.length < 2) return;
+  const simulation = d3.forceSimulation(visibleNodes)
+    .force("repel", d3.forceManyBody().strength(-50))
+    .force("attractX", d3.forceX(d => d.x).strength(0.5))
+    .force("attractY", d3.forceY(d => d.y).strength(0.5))
+    .force("collide", d3.forceCollide(d => computeFullRadius(d) + 5).strength(1))
+    .stop();
+  for (let i = 0; i < 30; i++) {
+    simulation.tick();
+  }
+}
 
-// Set up Reset Zoom button functionality
-d3.select("#resetZoom").on("click", () => {
-  manualInteraction = false;
-  autoZoom();
-});
+function dblclickHandler(event, parentNode) {
+  event.stopPropagation();
+  const newId = "new_" + Date.now();
+  const newNode = {
+    id: newId,
+    title: "New Node",
+    role: "human",
+    desc: "Newly created node.",
+    children: []
+  };
+  if (!parentNode.children) {
+    parentNode.children = [];
+  }
+  parentNode.children.push(newNode);
+  if (currentDetailLevel < parentNode.depth + 1) {
+    currentDetailLevel = parentNode.depth + 1;
+  }
+  buildAllNodes();
+  refreshDiagram();
+  initSelections();
+  const newNodeDatum = allNodes.find(n => n.id === newId);
+  if (newNodeDatum) {
+    newNodeDatum.expanding = true;
+    newNodeDatum.currentX = parentNode.x;
+    newNodeDatum.currentY = parentNode.y;
+  }
+  const newNodeSelection = nodeGroup.select(`#node-${newId}`);
+  if (!newNodeSelection.empty()) {
+    newNodeSelection.raise();
+  }
+}
 
-/**
- * Computes the full radius of a node based on its depth.
- * @param {Object} d - The node object.
- * @returns {number} The computed radius.
- */
+function bindNodeEvents() {
+  nodeGroup.selectAll("g.node").on("dblclick", dblclickHandler);
+}
+
 function computeFullRadius(d) {
+  if (d.title === "New Node" && d.role === "human" && d.depth >= 1) {
+    return 20;
+  }
   if (d.depth === 0) return config.mainRadius;
   if (d.depth === 1) return config.subRadius;
   if (d.depth === 2) return config.subSubRadius;
   return Math.max(3, config.subSubRadius - (d.depth - 2));
 }
 
-/**
- * Computes the bounding box that contains all nodes.
- * @returns {Object} Bounding box with x, y, width, and height.
- */
 function getLayoutBounds() {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   allNodes.forEach(n => {
@@ -141,9 +186,6 @@ function getLayoutBounds() {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-/**
- * Automatically zooms the SVG to fit all nodes, unless manual interaction has occurred.
- */
 function autoZoom() {
   if (!manualInteraction) {
     const bounds = getLayoutBounds();
@@ -153,29 +195,67 @@ function autoZoom() {
   }
 }
 
-/**
- * Refreshes the diagram by updating layout and connectors.
- */
-function refreshDiagram() {
-  updateLayout(mainNodes, currentDetailLevel, config);
-  const connectors = gatherConnectors(mainNodes, currentDetailLevel);
-  linkSel = linkSel.data(connectors, d => d.source.id + "-" + d.target.id);
-  linkSel.exit().remove();
-  linkSel = linkSel.enter()
-    .append("line")
-    .attr("class", "link")
-    .merge(linkSel);
+let lastTime = Date.now();
+function animate() {
+  const now = Date.now();
+  const dt = now - lastTime;
+  lastTime = now;
+  const speed = 5;
+  const t = 1 - Math.exp(-speed * dt / 1000);
+  
+  allNodes.forEach(n => {
+    n.currentX += (n.x - n.currentX) * t;
+    n.currentY += (n.y - n.currentY) * t;
+  });
+  
+  nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
+  
+  nodeSel.select("circle").attr("r", d => {
+    if (d.depth <= currentDetailLevel || d.expanding || d.collapsing) {
+      return computeFullRadius(d);
+    } else {
+      return 0;
+    }
+  });
+  
+  // Fade text: show only for nodes at or above the current expanded depth.
+  nodeSel.select("text").style("opacity", d => (d.depth <= currentDetailLevel ? 1 : 0));
+  
+  linkSel.attr("x1", d => d.source.currentX)
+         .attr("y1", d => d.source.currentY)
+         .attr("x2", d => d.target.currentX)
+         .attr("y2", d => d.target.currentY);
+  
+  requestAnimationFrame(animate);
 }
+requestAnimationFrame(animate);
 
-/**
- * Updates the diagram based on the action ("expand" or "collapse").
- * @param {string} action - The action to perform.
- */
+const zoomBehavior = d3.zoom()
+  .on("zoom", event => {
+    if (event.sourceEvent) {
+      manualInteraction = true;
+    }
+    g.attr("transform", event.transform);
+  });
+initZoom(svg, g, zoomBehavior);
+svg.on("dblclick.zoom", null);
+const tooltip = d3.select("#tooltip");
+bindTooltip(g, tooltip);
+d3.select("#resetZoom").on("click", () => {
+  manualInteraction = false;
+  autoZoom();
+});
+bindExpandCollapse(
+  d3.select("#expandButton"),
+  d3.select("#collapseButton"),
+  updateDiagram
+);
+
 function updateDiagram(action) {
   if (action === "expand") {
-    if (currentDetailLevel >= maxDepth) return;
+    if (currentDetailLevel >= Math.max(...allNodes.map(d => d.depth))) return;
     prevDetailLevel = currentDetailLevel;
-    currentDetailLevel = Math.min(currentDetailLevel + 1, maxDepth);
+    currentDetailLevel = Math.min(currentDetailLevel + 1, Math.max(...allNodes.map(d => d.depth)));
     allNodes.forEach(n => {
       if (n.depth === currentDetailLevel) {
         const parent = n.parent;
@@ -185,6 +265,29 @@ function updateDiagram(action) {
           n.expanding = true;
         }
       }
+      if (n.depth > currentDetailLevel) {
+        n.expanding = false;
+        n.collapsing = false;
+      }
+    });
+    const visibleNodes = allNodes.filter(n => n.depth <= currentDetailLevel);
+    if (visibleNodes.length > 1) {
+      const sim = d3.forceSimulation(visibleNodes)
+        .force("repel", d3.forceManyBody().strength(-50))
+        .force("attractX", d3.forceX(d => d.x).strength(0.5))
+        .force("attractY", d3.forceY(d => d.y).strength(0.5))
+        .force("collide", d3.forceCollide(d => computeFullRadius(d) + 5).strength(1))
+        .stop();
+      for (let i = 0; i < 30; i++) {
+        sim.tick();
+      }
+    }
+    nodeSel.sort((a, b) => {
+      const aVisible = a.depth <= currentDetailLevel;
+      const bVisible = b.depth <= currentDetailLevel;
+      if (aVisible && !bVisible) return -1;
+      if (!aVisible && bVisible) return 1;
+      return a.depth - b.depth;
     });
   } else if (action === "collapse") {
     if (currentDetailLevel <= 0) return;
@@ -202,112 +305,100 @@ function updateDiagram(action) {
       }
     });
     currentDetailLevel = Math.max(currentDetailLevel - 1, 0);
+    nodeSel.sort((a, b) => {
+      const aVisible = a.depth <= currentDetailLevel;
+      const bVisible = b.depth <= currentDetailLevel;
+      if (aVisible && !bVisible) return 1;
+      if (!aVisible && bVisible) return -1;
+      return b.depth - a.depth;
+    });
   }
   refreshDiagram();
   autoZoom();
 }
 
-/**
- * Finds the closest ancestor of a node at the specified depth.
- * @param {Object} node - The node object.
- * @param {number} depthWanted - The desired depth.
- * @returns {Object|null} The ancestor node at the desired depth, or null if not found.
- */
-function findParentInChain(node, depthWanted) {
-  while (node && node.depth !== depthWanted) {
-    node = node.parent;
-  }
-  return node;
-}
-
-/**
- * Retrieves the stored expanded position for a node.
- * @param {Object} d - The node object.
- * @returns {Object} Object with x and y coordinates.
- */
-function getFullPosition(d) {
-  if (d.expandedX !== undefined && d.expandedY !== undefined) {
-    return { x: d.expandedX, y: d.expandedY };
-  }
-  return { x: d.x, y: d.y };
-}
-
-// Initial layout rendering.
-refreshDiagram();
-allNodes.forEach(n => {
-  n.currentX = n.x;
-  n.currentY = n.y;
-});
-nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
-autoZoom();
-
-// Animation loop for smooth transitions.
-let lastTime = Date.now();
-function animate() {
-  const now = Date.now();
-  const dt = now - lastTime;
-  lastTime = now;
-  const speed = 5;
-  const t = 1 - Math.exp(-speed * dt / 1000);
-
-  // Animate nodes toward their final positions.
-  allNodes.forEach(n => {
-    n.currentX += (n.x - n.currentX) * t;
-    n.currentY += (n.y - n.currentY) * t;
-  });
-
-  // Update node positions in the DOM.
-  nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
-
-  // Update circle sizes based on current detail level and animation state.
-  nodeSel.select("circle").attr("r", d => {
-    if (d.depth <= currentDetailLevel || d.expanding || d.collapsing) {
-      return computeFullRadius(d);
-    } else {
-      return 0;
+function newMap() {
+  return [
+    {
+      id: "new1",
+      title: "New Map",
+      role: "human",
+      desc: "A brand new map.",
+      children: []
     }
-  });
-
-  // Update text opacity based on expansion state.
-  nodeSel.select("text").style("opacity", d => {
-    if (d.depth === 0) return 1;
-    if (d.depth < currentDetailLevel) return 1;
-    if (d.depth > currentDetailLevel && !d.expanding && !d.collapsing) return 0;
-    const parent = (d.expanding || d.collapsing)
-      ? findParentInChain(d, d.depth - 1)
-      : findParentInChain(d, currentDetailLevel - 1);
-    if (!parent) return 1;
-    const dx = d.currentX - parent.x;
-    const dy = d.currentY - parent.y;
-    const currentDistance = Math.sqrt(dx * dx + dy * dy);
-    const fullPos = d.expanding
-      ? getFullPosition(d)
-      : (d.collapsing && d.expandedX !== undefined
-         ? { x: d.expandedX, y: d.expandedY }
-         : getFullPosition(d));
-    const fullDistance = Math.sqrt((fullPos.x - parent.x) ** 2 + (fullPos.y - parent.y) ** 2);
-    const factor = (fullDistance > 0) ? Math.min(1, currentDistance / fullDistance) : 1;
-    return factor <= 0.5 ? 0 : (factor - 0.5) / 0.5;
-  });
-
-  // Update connector positions.
-  linkSel.attr("x1", d => d.source.currentX)
-         .attr("y1", d => d.source.currentY)
-         .attr("x2", d => d.target.currentX)
-         .attr("y2", d => d.target.currentY);
-
-  requestAnimationFrame(animate);
+  ];
 }
-requestAnimationFrame(animate);
 
-// Bind expand and collapse button events.
-bindExpandCollapse(
-  d3.select("#expandButton"),
-  d3.select("#collapseButton"),
-  updateDiagram
-);
+function saveMap() {
+  const name = prompt("Enter a name for your map:", "My Map " + new Date().toLocaleString());
+  if (name) {
+    const mapKey = "map_" + Date.now();
+    const mapData = {
+      name: name,
+      data: currentMapData
+    };
+    localStorage.setItem(mapKey, JSON.stringify(mapData));
+    alert("Map saved!");
+  }
+}
 
-// Debounce function for handling window resize events.
+function showMapLibrary() {
+  const mapListDiv = document.getElementById("mapList");
+  mapListDiv.innerHTML = "";
+  const defaultOption = document.createElement("div");
+  defaultOption.className = "mapItem";
+  defaultOption.textContent = "Default Map";
+  defaultOption.addEventListener("click", () => {
+    reloadDiagram(JSON.parse(JSON.stringify(defaultMap)));
+    closeModal();
+  });
+  mapListDiv.appendChild(defaultOption);
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key.startsWith("map_")) {
+      const mapData = JSON.parse(localStorage.getItem(key));
+      const mapItem = document.createElement("div");
+      mapItem.className = "mapItem";
+      mapItem.textContent = mapData.name;
+      mapItem.addEventListener("click", () => {
+        reloadDiagram(mapData.data);
+        closeModal();
+      });
+      mapListDiv.appendChild(mapItem);
+    }
+  }
+  document.getElementById("mapLibraryModal").classList.remove("hidden");
+}
+
+function closeModal() {
+  document.getElementById("mapLibraryModal").classList.add("hidden");
+}
+
+document.getElementById("newMapButton").addEventListener("click", () => {
+  if (confirm("Creating a new map will clear the current one. Continue?")) {
+    reloadDiagram(newMap());
+  }
+});
+
+document.getElementById("saveMapButton").addEventListener("click", saveMap);
+document.getElementById("loadMapButton").addEventListener("click", showMapLibrary);
+document.getElementById("closeModal").addEventListener("click", closeModal);
+
+svg.on("dblclick", function(event) {
+  if (event.target === svg.node()) {
+    const newId = "new_" + Date.now();
+    const newMainNode = {
+      id: newId,
+      title: "New Main Node",
+      role: "human",
+      desc: "New main node.",
+      children: []
+    };
+    currentMapData.push(newMainNode);
+    refreshDiagram();
+  }
+});
+
 function debounce(func, wait) {
   let timeout;
   return function(...args) {
@@ -316,7 +407,6 @@ function debounce(func, wait) {
   };
 }
 
-// Update SVG dimensions and re-render layout on window resize.
 window.addEventListener("resize", debounce(() => {
   const w = window.innerWidth;
   const h = window.innerHeight;
@@ -325,3 +415,14 @@ window.addEventListener("resize", debounce(() => {
   refreshDiagram();
   autoZoom();
 }, 200));
+
+buildAllNodes();
+initSelections();
+refreshDiagram();
+allNodes.forEach(n => {
+  n.currentX = n.x;
+  n.currentY = n.y;
+});
+nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
+drawLegend(svg);
+autoZoom();

@@ -6,6 +6,24 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <!-- Floating Menu -->
+  <div id="menu">
+    <button id="newMapButton">New Map</button>
+    <button id="saveMapButton">Save Map</button>
+    <button id="loadMapButton">Load Map</button>
+  </div>
+  
+  <!-- Modal for Map Library -->
+  <div id="mapLibraryModal" class="modal hidden">
+    <div class="modal-content">
+      <span id="closeModal" class="close">&times;</span>
+      <h2>Map Library</h2>
+      <div id="mapList">
+        <!-- Saved maps will be dynamically populated here -->
+      </div>
+    </div>
+  </div>
+
   <svg id="map"></svg>
   <div id="tooltip"></div>
   <button id="resetZoom">Reset Zoom</button>

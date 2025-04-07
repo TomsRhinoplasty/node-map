@@ -98,8 +98,8 @@ svg {
 }
 
 /*
-  Button Styling
-  --------------
+  Button Styling (for existing buttons)
+  ---------------------------------------
   Reset Zoom and Expand/Collapse buttons are positioned in the top right.
 */
 #resetZoom, #collapseButton, #expandButton {
@@ -125,4 +125,114 @@ svg {
   font-family: sans-serif;
   font-size: 14px;
   fill: #fff;
+}
+
+/* --- New Styles for Menu and Modal --- */
+
+/* Menu Container */
+#menu {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 100; /* Above the SVG */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  padding: 15px;
+  border-radius: 8px;
+  animation: slideIn 0.5s ease-out;
+}
+
+/* Menu Buttons */
+#menu button {
+  background: #222;
+  border: none;
+  padding: 10px 20px;
+  color: #fff;
+  font-size: 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+
+#menu button:hover {
+  background: #444;
+  transform: scale(1.05);
+}
+
+/* Slide In Animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Modal Styles for the Map Library */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 150;
+  animation: fadeIn 0.3s ease;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-content {
+  background: #111;
+  padding: 20px;
+  border-radius: 8px;
+  width: 80%;
+  max-width: 600px;
+  color: #fff;
+  position: relative;
+}
+
+.modal-content h2 {
+  margin-top: 0;
+}
+
+/* Close Button */
+.close {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+/* Map List Items */
+.mapItem {
+  padding: 10px;
+  margin: 5px 0;
+  background: #222;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+.mapItem:hover {
+  background: #444;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.node:hover {
+  cursor: pointer;
 }
