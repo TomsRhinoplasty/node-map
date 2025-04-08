@@ -2,10 +2,15 @@
  * Main module that initializes the diagram, sets up event listeners,
  * and orchestrates interactions between various modules.
  *
- * This version makes it so that each time you press Expand,
- * all the currently visible nodes (i.e. nodes with depth ≤ currentDetailLevel)
- * run through a short force simulation that repels them from each other
- * (while still being attracted to their computed layout positions).
+ * This version adds an improved drag-to-delete feature:
+ * - All nodes (including main nodes) may be click-and-held and dragged.
+ * - If a node is dragged more than a set threshold away from its original
+ *   connected (drag-start) position, it is marked for deletion.
+ *   For non-main nodes, deletion removes the node and its descendants from its parent.
+ *   For main nodes (depth === 0), deletion removes the node from the main node array,
+ *   causing the connectors on its left to automatically rewire to the next main node.
+ *
+ * Additionally, auto zoom/fit is active by default until the user manually pans or zooms.
  */
 
 import { mainNodes as defaultMap } from "./data.js";
@@ -22,7 +27,11 @@ let prevDetailLevel = 0;
 let manualInteraction = false;
 let allNodes = [];
 
-// D3 selections
+// Deletion threshold (in pixels) – if a node is dragged farther than this distance
+// from its drag-start position, it will be deleted.
+const deletionThreshold = 100;
+
+// D3 selections.
 const svg = d3.select("#map");
 if (svg.empty()) {
   console.error("SVG element with id 'map' not found.");
@@ -58,6 +67,7 @@ function buildAllNodes() {
 /* ===============================
    Node & Link Selections and Binding
    =============================== */
+// Build or update the node selection (circles & text) and then bind double-click and drag events.
 function initSelections() {
   nodeSel = nodeGroup.selectAll("g.node").data(allNodes, d => d.id);
   nodeSel.exit().remove();
@@ -78,15 +88,26 @@ function initSelections() {
     .attr("text-anchor", "middle")
     .text(d => d.title);
   nodeSel = newNodes.merge(nodeSel);
+  // Bind double-click and drag events.
   bindNodeEvents();
   linkSel = linkGroup.selectAll("line.link");
+}
+
+// Bind double-click for node creation and attach the drag-to-delete behavior.
+function bindNodeEvents() {
+  nodeGroup.selectAll("g.node")
+    .on("dblclick", dblclickHandler)
+    .call(d3.drag()
+      .on("start", dragStarted)
+      .on("drag", dragged)
+      .on("end", dragEnded)
+    );
 }
 
 function refreshDiagram() {
   // Compute layout positions using the updated layout algorithm.
   updateLayout(currentMapData, currentDetailLevel, config);
-  // For nodes deeper than currentDetailLevel (and not in an expanding state),
-  // override their positions to collapse them to their parent's coordinates.
+  // For nodes deeper than currentDetailLevel (and not expanding), collapse their positions to their parent's position.
   allNodes.forEach(n => {
     if (n.depth > currentDetailLevel && !n.expanding) {
       if (n.parent) {
@@ -94,7 +115,7 @@ function refreshDiagram() {
         n.y = n.parent.y;
       }
     }
-    // For new main nodes, force currentX/Y to their computed values so they don't animate from (0,0)
+    // For new main nodes, force currentX/Y to their computed values so they don't animate from (0,0).
     if (n.depth === 0 && n.isNew) {
       n.currentX = n.x;
       n.currentY = n.y;
@@ -132,10 +153,9 @@ function applyRepulsionToVisibleNodes() {
 /* ===============================
    Node Creation (Double-click) Logic
    =============================== */
-// Handler for double-clicking an existing node to create a child.
+// When a node is double-clicked, create a new child.
 function dblclickHandler(event, parentNode) {
   event.stopPropagation();
-  manualInteraction = false;
   const newId = "new_" + Date.now();
   const newNode = {
     id: newId,
@@ -164,18 +184,94 @@ function dblclickHandler(event, parentNode) {
   if (!newNodeSelection.empty()) {
     newNodeSelection.raise();
   }
-  autoZoom();
+  // Do not reset manualInteraction here so that if the user has manually zoomed/panned,
+  // auto zoom remains off.
 }
 
-function bindNodeEvents() {
-  nodeGroup.selectAll("g.node").on("dblclick", dblclickHandler);
+/* ===============================
+   Drag-to-Delete Event Handlers
+   =============================== */
+
+/**
+ * Called when a node drag starts.
+ * Records the drag-start position and sets a dragging flag.
+ */
+function dragStarted(event, d) {
+  d.dragging = true;
+  d.dragStartX = d.currentX;
+  d.dragStartY = d.currentY;
+}
+
+/**
+ * Called while dragging the node.
+ * Updates its current position and adds the "toDelete" class if the displacement
+ * from the drag-start exceeds the threshold.
+ */
+function dragged(event, d) {
+  d.currentX = event.x;
+  d.currentY = event.y;
+  d3.select(this).attr("transform", `translate(${d.currentX}, ${d.currentY})`);
+  
+  // Calculate displacement from drag start.
+  const dx = d.currentX - d.dragStartX;
+  const dy = d.currentY - d.dragStartY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  
+  if (distance > deletionThreshold) {
+    d.toDelete = true;
+    d3.select(this).classed("toDelete", true);
+  } else {
+    d.toDelete = false;
+    d3.select(this).classed("toDelete", false);
+  }
+}
+
+/**
+ * Called when the drag ends.
+ * If the drag displacement exceeds the threshold, the node is deleted.
+ * For non-main nodes, it is removed from its parent's children; for main nodes,
+ * it is removed from the main node array.
+ * Otherwise, the node snaps back to its computed layout position.
+ * In all cases, the dragging flag is cleared.
+ */
+function dragEnded(event, d) {
+  d.dragging = false;
+  const dx = d.currentX - d.dragStartX;
+  const dy = d.currentY - d.dragStartY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  
+  if (distance > deletionThreshold) {
+    if (d.depth === 0) {
+      // Main node deletion.
+      currentMapData = currentMapData.filter(node => node.id !== d.id);
+    } else {
+      // Non-main node deletion.
+      removeNodeFromParent(d, d.parent);
+    }
+    buildAllNodes();
+    refreshDiagram();
+    initSelections();
+  } else {
+    // Snap back to computed layout position.
+    d.currentX = d.x;
+    d.currentY = d.y;
+    d3.select(this).classed("toDelete", false);
+  }
+}
+
+/**
+ * Helper function: Removes the given node from its parent's children array.
+ */
+function removeNodeFromParent(node, parent) {
+  if (!parent.children) return;
+  parent.children = parent.children.filter(child => child.id !== node.id);
 }
 
 /* ===============================
    Utility Functions for Node Appearance
    =============================== */
 function computeFullRadius(d) {
-  // For new main nodes, animate radius growth.
+  // For new main nodes, animate growth.
   if (d.isNew) {
     d.growthProgress = (d.growthProgress || 0) + 0.05;
     if (d.growthProgress >= 1) {
@@ -217,6 +313,11 @@ function getLayoutBounds() {
 /* ===============================
    Auto Zooming and Animation
    =============================== */
+/*
+  Auto zoom/fit is active by default until the user manually pans or zooms.
+  Once manual interaction is detected via mouse wheel or drag on the background,
+  auto zoom is turned off until the "Reset Zoom" button is used.
+*/
 function autoZoom() {
   if (!manualInteraction) {
     const bounds = getLayoutBounds();
@@ -234,15 +335,16 @@ function animate() {
   const speed = 5;
   const t = 1 - Math.exp(-speed * dt / 1000);
   
+  // Update positions only for nodes not being actively dragged.
   allNodes.forEach(n => {
-    n.currentX += (n.x - n.currentX) * t;
-    n.currentY += (n.y - n.currentY) * t;
+    if (!n.dragging) {
+      n.currentX += (n.x - n.currentX) * t;
+      n.currentY += (n.y - n.currentY) * t;
+    }
   });
   
   nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
-  
   nodeSel.select("circle").attr("r", d => computeFullRadius(d));
-  
   nodeSel.select("text").style("opacity", d => (d.depth <= currentDetailLevel ? 1 : 0));
   
   linkSel.attr("x1", d => d.source.currentX)
@@ -434,9 +536,11 @@ function closeModal() {
   document.getElementById("mapLibraryModal").classList.add("hidden");
 }
 
+// When double-clicking on the background, add a new main node.
+// Note: We do not reset the manualInteraction flag here so that if the user has manually adjusted the view,
+// that state is preserved.
 svg.on("dblclick", function(event) {
   if (event.target === svg.node()) {
-    manualInteraction = false;
     const newId = "new_" + Date.now();
     const newMainNode = {
       id: newId,
