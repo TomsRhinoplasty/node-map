@@ -35,26 +35,23 @@ svg {
 }
 
 .node.toDelete circle {
-  /* When a node is being dragged beyond the deletion threshold,
-     we change its stroke to red and make it a bit thicker */
   stroke: #ff0000;
   stroke-width: 4px;
 }
 
 .ai {
-  fill: #4CAF50; /* green */
+  fill: #4CAF50;
 }
 .human {
-  fill: #F44336; /* red */
+  fill: #F44336;
 }
 .hybrid {
-  fill: #2196F3; /* blue */
+  fill: #2196F3;
 }
 
 /*
   Node Text
   ---------
-  Text inside nodes is centered, white, and uses a sans-serif font.
 */
 .node text {
   font-family: sans-serif;
@@ -66,8 +63,6 @@ svg {
 
 /*
   Connector (Link) Styling
-  --------------------------
-  Drawn as dashed lines with a simple animation.
 */
 .link {
   stroke: rgba(255, 255, 255, 0.3);
@@ -77,18 +72,12 @@ svg {
   animation: dash 1s linear infinite;
 }
 @keyframes dash {
-  from {
-    stroke-dashoffset: 0;
-  }
-  to {
-    stroke-dashoffset: -10;
-  }
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -10; }
 }
 
 /*
   Tooltip Styling
-  ---------------
-  Tooltip appears near the cursor with a white background and black text.
 */
 #tooltip {
   position: absolute;
@@ -104,76 +93,100 @@ svg {
   z-index: 10;
 }
 
-/*
-  Reset Zoom, Expand/Collapse Buttons
-  -----------------------------------
-  Positioned in the top right.
-*/
-#resetZoom, #collapseButton, #expandButton {
-  position: absolute;
-  top: 10px;
-  z-index: 20;
-  padding: 8px 12px;
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  cursor: pointer;
-}
-#resetZoom { right: 10px; }
-#collapseButton { right: 120px; }
-#expandButton { right: 230px; }
-
-/*
-  Legend Styling
-  --------------
-  The legend shows which colors correspond to each task role.
-*/
-.legend text {
-  font-family: sans-serif;
-  font-size: 14px;
-  fill: #fff;
-}
-
-/* --- Toolbar Menu Styling --- */
-/* This toolbar appears at the bottom of the page. 
-   In its collapsed state, it is 60px tall and only 20px is hidden (via a translateY value).
-   It uses a light transparent gray background as a “handle”. On hover it rises and expands.
-*/
-#menu {
+/* --- New Top Toolbar Styling --- */
+#topToolbar {
   position: fixed;
-  bottom: 0;
+  top: 0;
   left: 0;
   width: 100%;
-  height: 60px; /* increased collapsed height */
-  background: rgba(211, 211, 211, 0.3); /* light gray transparent background */
-  transition: height 0.3s ease, transform 0.3s ease;
-  transform: translateY(20px);  /* only 20px hidden */
-  z-index: 100;
+  height: 40px;
+  background: rgba(211, 211, 211, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
-}
-#menu:hover {
-  transform: translateY(0);
-  height: 100px;  /* expanded height */
-}
-#menu button {
-  margin: 0 10px;
-  padding: 8px 12px;
-  background: #222;
-  border: none;
-  color: #fff;
-  font-size: 16px;
-  border-radius: 5px;
-  cursor: pointer;
-  transition: background 0.3s ease, transform 0.3s ease;
-}
-#menu button:hover {
-  background: #444;
-  transform: scale(1.05);
+  z-index: 100;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  position: relative; /* Enable absolute positioning for children */
 }
 
-/* --- Modal Styles --- */
+/* Container for the control buttons (centered) */
+#controlButtons {
+  display: flex;
+  gap: 20px;
+}
+
+/* Styling for control buttons */
+#controlButtons button {
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* Dropdown Menu Container positioned at the top right */
+#dropdownMenu {
+  position: absolute;
+  top: 0;
+  right: 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/* Dropdown Arrow styling and slide-down effect */
+#dropdownArrow {
+  transition: transform 0.3s ease-out;
+  font-size: 18px;
+  padding: 4px;
+  cursor: pointer;
+  margin-right: 50px;  /* Adjust this value to move the arrow to the left */
+}
+#dropdownMenu:hover #dropdownArrow {
+  transform: translateY(20px);
+}
+
+/* Dropdown Content: initially hidden (shifted up and transparent) */
+#dropdownContent {
+  position: absolute;
+  top: 40px; /* directly below the toolbar */
+  right: 0;
+  background: rgba(211, 211, 211, 0.3);
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+#dropdownMenu:hover #dropdownContent {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+/* Styling for the dropdown buttons with minimum width and no text wrapping */
+#dropdownContent button {
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #ccc;
+  cursor: pointer;
+  font-size: 12px;
+  min-width: 120px;
+  white-space: nowrap;
+  text-align: left;
+}
+#dropdownContent button:last-child {
+  border-bottom: none;
+}
+
+/*
+  Modal Styles
+*/
 .modal {
   position: fixed;
   top: 0;
@@ -202,7 +215,6 @@ svg {
 .modal-content h2 {
   margin-top: 0;
 }
-/* Close Button */
 .close {
   position: absolute;
   top: 10px;
@@ -210,7 +222,6 @@ svg {
   font-size: 24px;
   cursor: pointer;
 }
-/* Map List Items */
 .mapItem {
   padding: 10px;
   margin: 5px 0;
@@ -228,6 +239,11 @@ svg {
   to { opacity: 1; }
 }
 
+/*
+  Additional Hover Effects for Nodes
+*/
 .node:hover {
   cursor: pointer;
 }
+
+/* (Other non-toolbar styles remain unchanged.) */

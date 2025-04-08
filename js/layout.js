@@ -3,40 +3,62 @@
  * @module layout
  */
 
-/**
- * Recursively positions each main node and its descendants.
- * Main nodes are arranged horizontally with a starting x position and spacing,
- * while children are positioned dynamically based on computed subtree heights.
- * @param {Array} mainNodes - Array of main nodes.
- * @param {number} detailLevel - Number of layers of children to display (0 = only main, 1 = main+sub, etc.).
- * @param {Object} config - Configuration object with layout settings.
- */
 export function updateLayout(mainNodes, detailLevel, config) {
   if (!mainNodes || !Array.isArray(mainNodes) || mainNodes.length === 0) {
     console.warn("No main nodes provided for layout update.");
     return;
   }
-  
-  // Reset positions for all main nodes.
+
+  // Reset positions for all nodes.
   mainNodes.forEach(m => resetPositions(m));
-  
-  // Place main nodes horizontally.
+
+  /*
+   * 1) Fully collapsed state (detailLevel === 0):
+   *    Place main nodes in a row with an alternating vertical offset,
+   *    and collapse all of their children to their parent's position.
+   */
+  if (detailLevel === 0) {
+    let currentX = config.mainStartX;
+    const verticalOffset = 100; // Adjust vertical offset as needed.
+    const collapsedSpacing = 275; // Reduced spacing for fully collapsed state.
+
+    mainNodes.forEach((node, i) => {
+      const direction = (i % 2 === 0) ? -1 : 1;
+      node.x = currentX;
+      node.y = config.centerY + direction * verticalOffset;
+      // Provide a minimal subtree height.
+      node.subtreeHeight = 40;
+      // Collapse all children to the parent node's position.
+      collapseChildren(node);
+      // Advance horizontally using the collapsed spacing.
+      currentX += collapsedSpacing;
+    });
+
+    return;
+  }
+
+  /*
+   * 2) Expanded state (detailLevel > 0):
+   *    Place main nodes along a horizontal line at config.centerY and recursively
+   *    assign positions for children.
+   */
   let currentX = config.mainStartX;
   mainNodes.forEach(node => {
     node.x = currentX;
     node.y = config.centerY;
-    // Compute subtree heights for this node (up to the detail level).
+
+    // Compute subtree heights and assign positions for children.
     computeSubtreeHeight(node, detailLevel);
-    // Assign positions (both x and y) for children dynamically.
     assignPositions(node, node.y, detailLevel);
-    // Update horizontal coordinate for the next main node based on the rightmost position.
+
+    // Move currentX based on the rightmost point of this node's subtree.
     let rightmost = getRightmostX(node);
     currentX = rightmost + config.mainSpacing;
   });
 }
 
 /**
- * Recursively resets positions (x, y) and subtree height for a node and all its children.
+ * Recursively resets positions (x, y) and subtree height for a node and its children.
  * @param {Object} node - The node object.
  */
 function resetPositions(node) {
@@ -49,6 +71,19 @@ function resetPositions(node) {
 }
 
 /**
+ * Recursively collapses all children of a node, setting their coordinates to the parent's coordinates.
+ * @param {Object} node - The node object.
+ */
+function collapseChildren(node) {
+  if (!node.children || node.children.length === 0) return;
+  node.children.forEach(child => {
+    child.x = node.x;
+    child.y = node.y;
+    collapseChildren(child);
+  });
+}
+
+/**
  * Computes the total vertical space (subtree height) required for a node and its descendants,
  * considering only nodes up to the given detail level.
  * @param {Object} node - The node object.
@@ -58,26 +93,24 @@ function resetPositions(node) {
  */
 function computeSubtreeHeight(node, detailLevel, depth = 0) {
   const nodeHeight = 40; // Base height for each node.
-  // If we've reached the detail limit or there are no children, use the base height.
   if (depth === detailLevel || !node.children || node.children.length === 0) {
     node.subtreeHeight = nodeHeight;
     return nodeHeight;
   }
-  
-  const spacing = 10; // Vertical spacing between siblings.
+
+  const spacing = 50; // Vertical spacing between siblings.
   let total = 0;
   node.children.forEach(child => {
     total += computeSubtreeHeight(child, detailLevel, depth + 1);
   });
   total += spacing * (node.children.length - 1);
-  
-  // The subtree height is at least the base node height.
+
   node.subtreeHeight = Math.max(nodeHeight, total);
   return node.subtreeHeight;
 }
 
 /**
- * Recursively assigns positions (both x and y) to a node's children based on their subtree heights.
+ * Recursively assigns positions (x, y) to a node's children based on their subtree heights.
  * If a child's depth exceeds the detail level, it is collapsed to the parent's position.
  * @param {Object} node - The parent node.
  * @param {number} centerY - The y-coordinate around which to center the children.
@@ -86,10 +119,9 @@ function computeSubtreeHeight(node, detailLevel, depth = 0) {
  */
 function assignPositions(node, centerY, detailLevel, depth = 0) {
   node.y = centerY;
-  
+
   if (!node.children || node.children.length === 0) return;
-  
-  // If the next level is beyond the detail level, collapse children to parent's position.
+
   if (depth + 1 > detailLevel) {
     node.children.forEach(child => {
       child.x = node.x;
@@ -98,14 +130,12 @@ function assignPositions(node, centerY, detailLevel, depth = 0) {
     });
     return;
   }
-  
-  const spacing = 10;
-  // Total height needed for all children.
+
+  const spacing = 50;
   let totalChildrenHeight = node.children.reduce((sum, child) => sum + child.subtreeHeight, 0)
                             + spacing * (node.children.length - 1);
-  // Starting y position so that children are vertically centered around parent's center.
   let startY = centerY - totalChildrenHeight / 2;
-  
+
   node.children.forEach(child => {
     let childCenterY = startY + child.subtreeHeight / 2;
     child.x = node.x + offsetX(depth + 1);
@@ -133,10 +163,10 @@ function getRightmostX(node) {
 
 /**
  * Computes the horizontal offset for a given depth level.
- * @param {number} depth - The depth level (e.g. 1 for sub nodes, 2 for sub-sub nodes, etc.).
+ * @param {number} depth - The depth level (e.g., 1 for sub nodes, 2 for sub-sub nodes, etc.).
  * @returns {number} The horizontal offset.
  */
 function offsetX(depth) {
-  // Adjust this value if you wish to change the horizontal spacing between levels.
-  return 400;
+  // Change this value to adjust the horizontal spacing between levels of children.
+  return 300;
 }

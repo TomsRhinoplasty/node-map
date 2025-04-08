@@ -5,6 +5,7 @@
 
 /**
  * Programmatically zoom/pan so that the specified bounding box fits entirely within the SVG.
+ * A padding is added to the bounds so that additional elements (like node text) remain visible.
  * @param {Object} svg - The D3 selection of the SVG element.
  * @param {Object} zoomBehavior - The D3 zoom behavior.
  * @param {Object} bounds - The bounding box { x, y, width, height }.
@@ -23,14 +24,23 @@ export function animateZoomToBounds(svg, zoomBehavior, bounds, duration = 750) {
   const svgWidth = svg.node().clientWidth;
   const svgHeight = svg.node().clientHeight;
 
-  // Compute scale so that the bounds fit within the SVG, with a slight margin.
-  const scale = Math.min(svgWidth / bounds.width, svgHeight / bounds.height) * 0.9;
+  // Add padding to the bounds so that the node and its text are fully visible.
+  const padding = 50; // You can adjust this value to increase or decrease the margin
+  const paddedBounds = {
+    x: bounds.x - padding,
+    y: bounds.y - padding,
+    width: bounds.width + (2 * padding),
+    height: bounds.height + (2 * padding)
+  };
 
-  // Calculate the center of the bounding box.
-  const centerX = bounds.x + bounds.width / 2;
-  const centerY = bounds.y + bounds.height / 2;
+  // Compute scale so that the padded bounds fit within the SVG.
+  const scale = Math.min(svgWidth / paddedBounds.width, svgHeight / paddedBounds.height) * 0.9;
 
-  // Compute translation to center the bounding box within the SVG.
+  // Calculate the center of the padded bounding box.
+  const centerX = paddedBounds.x + paddedBounds.width / 2;
+  const centerY = paddedBounds.y + paddedBounds.height / 2;
+
+  // Compute translation to center the padded bounding box within the SVG.
   const translateX = svgWidth / 2 - scale * centerX;
   const translateY = svgHeight / 2 - scale * centerY;
 

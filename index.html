@@ -6,13 +6,23 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <!-- Toolbar Menu at the bottom -->
-  <div id="menu">
-    <button id="newMapButton">New Map</button>
-    <button id="saveMapButton">Save Map</button>
-    <button id="loadMapButton">Load Map</button>
+  <!-- Top Toolbar -->
+  <div id="topToolbar">
+    <div id="controlButtons">
+      <button id="collapseButton">Collapse</button>
+      <button id="resetZoom">Reset Zoom</button>
+      <button id="expandButton">Expand</button>
+    </div>
+    <div id="dropdownMenu">
+      <div id="dropdownArrow">&#9662;</div>
+      <div id="dropdownContent">
+        <button id="newMapButton">New Map</button>
+        <button id="saveMapButton">Save Map</button>
+        <button id="loadMapButton">Load Map</button>
+      </div>
+    </div>
   </div>
-  
+
   <!-- Modal for Map Library -->
   <div id="mapLibraryModal" class="modal hidden">
     <div class="modal-content">
@@ -27,11 +37,6 @@
   <svg id="map"></svg>
   <div id="tooltip"></div>
   
-  <!-- Reset Zoom and Expand/Collapse Buttons (kept at top-right) -->
-  <button id="resetZoom">Reset Zoom</button>
-  <button id="collapseButton">Collapse</button>
-  <button id="expandButton">Expand</button>
-
   <!-- Load D3.js -->
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <!-- Main script -->

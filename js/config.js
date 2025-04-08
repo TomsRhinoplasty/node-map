@@ -4,9 +4,9 @@
  */
 export const config = {
   mainStartX: 100,
-  mainSpacing: 500,
+  mainSpacing: 300,
   centerY: window.innerHeight / 2,
   mainRadius: 50,
   subRadius: 20,
-  subSubRadius: 5
+  subSubRadius: 10
 };
