@@ -2,16 +2,28 @@
  * Main module that initializes the diagram, sets up event listeners,
  * and orchestrates interactions between various modules.
  *
- * This version adds an improved drag-to-delete feature:
- * - All nodes (including main nodes) may be click-and-held and dragged.
- * - If a node is dragged more than a set threshold away from its original
- *   connected (drag-start) position, it is marked for deletion.
- *   For non-main nodes, deletion removes the node and its descendants from its parent.
- *   For main nodes (depth === 0), deletion removes the node from the main node array,
- *   causing the connectors on its left to automatically rewire to the next main node.
- *
- * Additionally, auto zoom/fit is active by default until the user manually pans or zooms.
+ * This version adds:
+ *  - An improved drag-to-delete feature:
+ *      • All nodes (including main nodes) may be clicked and held then dragged.
+ *      • If a node is dragged more than a set threshold from its drag‑start,
+ *        it is deleted. For non‑main nodes, deletion removes the node (and its descendants)
+ *        from its parent; for main nodes (depth === 0), it is removed from the main node array.
+ *  - Auto zoom/fit that remains active until manual pan/zoom.
+ *  - Inline text editing in place:
+ *      • Each node displays its title as an SVG text element.
+ *      • If a node’s title is empty, we force its text to be a series of non‑breaking
+ *        spaces AND we add an invisible rectangle (the edit overlay) of a large default size,
+ *        so that there is a comfortable clickable area to trigger inline editing.
+ *      • When you double‑click the text (or the overlay), the text is replaced in place
+ *        by a foreignObject containing a contenteditable div. As you type, the editor expands
+ *        horizontally and remains centered. When editing ends (on blur or Enter), the updated
+ *        text is saved (or a non‑breaking space is used if empty), and the foreignObject is removed.
  */
+
+// Constants to control the default empty editing space:
+const defaultEmptyText = "\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0"; // 10 non-breaking spaces
+const defaultEmptyWidth = 250; // in pixels
+const defaultEmptyHeight = 30; // in pixels
 
 import { mainNodes as defaultMap } from "./data.js";
 import { updateLayout } from "./layout.js";
@@ -27,8 +39,7 @@ let prevDetailLevel = 0;
 let manualInteraction = false;
 let allNodes = [];
 
-// Deletion threshold (in pixels) – if a node is dragged farther than this distance
-// from its drag-start position, it will be deleted.
+// Deletion threshold (in pixels).
 const deletionThreshold = 100;
 
 // D3 selections.
@@ -49,7 +60,6 @@ function gatherAllNodes(node, depth = 0, parent = null) {
   node.depth = depth;
   node.parent = parent;
   allNodes.push(node);
-  // Initialize current positions if not already set.
   node.currentX = node.x || 0;
   node.currentY = node.y || 0;
   node.expanding = false;
@@ -67,7 +77,6 @@ function buildAllNodes() {
 /* ===============================
    Node & Link Selections and Binding
    =============================== */
-// Build or update the node selection (circles & text) and then bind double-click and drag events.
 function initSelections() {
   nodeSel = nodeGroup.selectAll("g.node").data(allNodes, d => d.id);
   nodeSel.exit().remove();
@@ -76,8 +85,11 @@ function initSelections() {
     .attr("class", d => `node ${d.role}`)
     .attr("id", d => "node-" + d.id)
     .attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
+
   newNodes.append("circle")
     .attr("r", d => computeFullRadius(d));
+
+  // Append the SVG text element.
   newNodes.append("text")
     .attr("dy", d => {
       if (d.depth === 0) return config.mainRadius + 20;
@@ -86,14 +98,52 @@ function initSelections() {
       return 20;
     })
     .attr("text-anchor", "middle")
-    .text(d => d.title);
+    // If title is empty, show a series of non-breaking spaces.
+    .text(d => d.title.trim() === "" ? defaultEmptyText : d.title)
+    .style("pointer-events", "all")
+    .style("cursor", "text")
+    .on("dblclick", function(event, d) {
+      event.stopPropagation();
+      editInlineText(this, d);
+    });
+
+  // Append an invisible rectangle (edit overlay) behind the text.
+  newNodes.append("rect")
+    .attr("class", "editOverlay")
+    .style("fill", "transparent")
+    .style("pointer-events", "all")
+    .style("cursor", "text")
+    .on("dblclick", function(event, d) {
+      event.stopPropagation();
+      let txt = d3.select(this.parentNode).select("text").node();
+      editInlineText(txt, d);
+    });
+
   nodeSel = newNodes.merge(nodeSel);
-  // Bind double-click and drag events.
+
+  // Update the edit overlay dimensions for each node.
+  nodeSel.each(function(d) {
+    let textElem = d3.select(this).select("text").node();
+    let bbox = textElem.getBBox();
+    let w = bbox.width;
+    let h = bbox.height;
+    // If text is empty (only non-breaking spaces), force default dimensions.
+    if (d.title.trim() === "") {
+      w = defaultEmptyWidth;
+      h = defaultEmptyHeight;
+    }
+    // Center the overlay: since the text element is centered at x=0, overlay x = -w/2.
+    d3.select(this).select("rect.editOverlay")
+      .attr("x", -w/2)
+      .attr("y", bbox.y) // use the text element's y
+      .attr("width", w)
+      .attr("height", h);
+  });
+
   bindNodeEvents();
   linkSel = linkGroup.selectAll("line.link");
 }
 
-// Bind double-click for node creation and attach the drag-to-delete behavior.
 function bindNodeEvents() {
   nodeGroup.selectAll("g.node")
     .on("dblclick", dblclickHandler)
@@ -105,9 +155,7 @@ function bindNodeEvents() {
 }
 
 function refreshDiagram() {
-  // Compute layout positions using the updated layout algorithm.
   updateLayout(currentMapData, currentDetailLevel, config);
-  // For nodes deeper than currentDetailLevel (and not expanding), collapse their positions to their parent's position.
   allNodes.forEach(n => {
     if (n.depth > currentDetailLevel && !n.expanding) {
       if (n.parent) {
@@ -115,13 +163,11 @@ function refreshDiagram() {
         n.y = n.parent.y;
       }
     }
-    // For new main nodes, force currentX/Y to their computed values so they don't animate from (0,0).
     if (n.depth === 0 && n.isNew) {
       n.currentX = n.x;
       n.currentY = n.y;
     }
   });
-  // Apply repulsion simulation to visible nodes.
   applyRepulsionToVisibleNodes();
   const connectors = gatherConnectors(currentMapData, currentDetailLevel);
   linkSel = linkSel.data(connectors, d => d.source.id + "-" + d.target.id);
@@ -153,7 +199,6 @@ function applyRepulsionToVisibleNodes() {
 /* ===============================
    Node Creation (Double-click) Logic
    =============================== */
-// When a node is double-clicked, create a new child.
 function dblclickHandler(event, parentNode) {
   event.stopPropagation();
   const newId = "new_" + Date.now();
@@ -184,39 +229,101 @@ function dblclickHandler(event, parentNode) {
   if (!newNodeSelection.empty()) {
     newNodeSelection.raise();
   }
-  // Do not reset manualInteraction here so that if the user has manually zoomed/panned,
-  // auto zoom remains off.
+}
+
+/* ===============================
+   Inline Text Editing (In-Place)
+   =============================== */
+/**
+ * Replaces the SVG text element with an inline HTML editor using a foreignObject.
+ * The editor appears in place over the text element's area. If the node's text is empty,
+ * the editor uses default dimensions (defaultEmptyWidth x defaultEmptyHeight) so that a spacious
+ * clickable area is available. As you type, the editor expands dynamically and remains centered.
+ * When editing ends (on blur or Enter), the node's title is updated (or a non-breaking space is used if empty),
+ * and the foreignObject is removed.
+ * @param {SVGTextElement} textElem - The SVG text element being edited.
+ * @param {Object} d - The node data.
+ */
+function editInlineText(textElem, d) {
+  const bbox = textElem.getBBox();
+  const isEmpty = d.title.trim() === "";
+  const width = isEmpty ? defaultEmptyWidth : (bbox.width > 0 ? bbox.width : defaultEmptyWidth);
+  const height = isEmpty ? defaultEmptyHeight : (bbox.height > 0 ? bbox.height : defaultEmptyHeight);
+  
+  // Hide the original text element.
+  d3.select(textElem).style("display", "none");
+  const parentGroup = d3.select(textElem.parentNode);
+  
+  // Since the text is centered at x = 0, set editor x so that it is centered.
+  const editorX = -width / 2;
+  
+  // Append a foreignObject for inline editing.
+  const foreign = parentGroup.append("foreignObject")
+    .attr("x", editorX)
+    .attr("y", bbox.y)
+    .attr("width", width + 10)
+    .attr("height", height + 4)
+    .attr("class", "inline-editor");
+  
+  // Append a contenteditable div inside the foreignObject.
+  const div = foreign.append("xhtml:div")
+    .attr("contenteditable", "true")
+    .style("width", "100%")
+    .style("height", "100%")
+    .style("outline", "none")
+    .style("white-space", "nowrap")
+    .style("font", window.getComputedStyle(textElem).font)
+    .style("text-align", "center")
+    .node();
+  
+  div.textContent = d.title;
+  setTimeout(() => {
+    div.focus();
+    document.execCommand("selectAll", false, null);
+  }, 0);
+  
+  // Adjust editor width dynamically as you type and keep it centered.
+  div.addEventListener("input", function() {
+    let newWidth = this.scrollWidth;
+    if (newWidth < defaultEmptyWidth) newWidth = defaultEmptyWidth;
+    foreign.attr("width", newWidth + 10)
+           .attr("x", -newWidth / 2);
+  });
+  
+  function finishEditing() {
+    const newText = div.textContent;
+    d.title = newText;
+    foreign.remove();
+    d3.select(textElem)
+      .style("display", null)
+      .text(newText === "" ? "\u00A0" : newText);
+  }
+  
+  div.addEventListener("blur", finishEditing);
+  div.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      finishEditing();
+    }
+  });
 }
 
 /* ===============================
    Drag-to-Delete Event Handlers
    =============================== */
-
-/**
- * Called when a node drag starts.
- * Records the drag-start position and sets a dragging flag.
- */
 function dragStarted(event, d) {
   d.dragging = true;
   d.dragStartX = d.currentX;
   d.dragStartY = d.currentY;
 }
 
-/**
- * Called while dragging the node.
- * Updates its current position and adds the "toDelete" class if the displacement
- * from the drag-start exceeds the threshold.
- */
 function dragged(event, d) {
   d.currentX = event.x;
   d.currentY = event.y;
   d3.select(this).attr("transform", `translate(${d.currentX}, ${d.currentY})`);
-  
-  // Calculate displacement from drag start.
   const dx = d.currentX - d.dragStartX;
   const dy = d.currentY - d.dragStartY;
   const distance = Math.sqrt(dx * dx + dy * dy);
-  
   if (distance > deletionThreshold) {
     d.toDelete = true;
     d3.select(this).classed("toDelete", true);
@@ -226,42 +333,27 @@ function dragged(event, d) {
   }
 }
 
-/**
- * Called when the drag ends.
- * If the drag displacement exceeds the threshold, the node is deleted.
- * For non-main nodes, it is removed from its parent's children; for main nodes,
- * it is removed from the main node array.
- * Otherwise, the node snaps back to its computed layout position.
- * In all cases, the dragging flag is cleared.
- */
 function dragEnded(event, d) {
   d.dragging = false;
   const dx = d.currentX - d.dragStartX;
   const dy = d.currentY - d.dragStartY;
   const distance = Math.sqrt(dx * dx + dy * dy);
-  
   if (distance > deletionThreshold) {
     if (d.depth === 0) {
-      // Main node deletion.
       currentMapData = currentMapData.filter(node => node.id !== d.id);
     } else {
-      // Non-main node deletion.
       removeNodeFromParent(d, d.parent);
     }
     buildAllNodes();
     refreshDiagram();
     initSelections();
   } else {
-    // Snap back to computed layout position.
     d.currentX = d.x;
     d.currentY = d.y;
     d3.select(this).classed("toDelete", false);
   }
 }
 
-/**
- * Helper function: Removes the given node from its parent's children array.
- */
 function removeNodeFromParent(node, parent) {
   if (!parent.children) return;
   parent.children = parent.children.filter(child => child.id !== node.id);
@@ -271,7 +363,6 @@ function removeNodeFromParent(node, parent) {
    Utility Functions for Node Appearance
    =============================== */
 function computeFullRadius(d) {
-  // For new main nodes, animate growth.
   if (d.isNew) {
     d.growthProgress = (d.growthProgress || 0) + 0.05;
     if (d.growthProgress >= 1) {
@@ -313,11 +404,6 @@ function getLayoutBounds() {
 /* ===============================
    Auto Zooming and Animation
    =============================== */
-/*
-  Auto zoom/fit is active by default until the user manually pans or zooms.
-  Once manual interaction is detected via mouse wheel or drag on the background,
-  auto zoom is turned off until the "Reset Zoom" button is used.
-*/
 function autoZoom() {
   if (!manualInteraction) {
     const bounds = getLayoutBounds();
@@ -334,24 +420,19 @@ function animate() {
   lastTime = now;
   const speed = 5;
   const t = 1 - Math.exp(-speed * dt / 1000);
-  
-  // Update positions only for nodes not being actively dragged.
   allNodes.forEach(n => {
     if (!n.dragging) {
       n.currentX += (n.x - n.currentX) * t;
       n.currentY += (n.y - n.currentY) * t;
     }
   });
-  
   nodeSel.attr("transform", d => `translate(${d.currentX}, ${d.currentY})`);
   nodeSel.select("circle").attr("r", d => computeFullRadius(d));
   nodeSel.select("text").style("opacity", d => (d.depth <= currentDetailLevel ? 1 : 0));
-  
   linkSel.attr("x1", d => d.source.currentX)
          .attr("y1", d => d.source.currentY)
          .attr("x2", d => d.target.currentX)
          .attr("y2", d => d.target.currentY);
-  
   requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
@@ -514,7 +595,7 @@ function showMapLibrary() {
     closeModal();
   });
   mapListDiv.appendChild(defaultOption);
-  
+
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if (key.startsWith("map_")) {
@@ -537,8 +618,6 @@ function closeModal() {
 }
 
 // When double-clicking on the background, add a new main node.
-// Note: We do not reset the manualInteraction flag here so that if the user has manually adjusted the view,
-// that state is preserved.
 svg.on("dblclick", function(event) {
   if (event.target === svg.node()) {
     const newId = "new_" + Date.now();
